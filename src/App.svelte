@@ -32,6 +32,9 @@
     void autoConnectMidi();
   });
 
+  // Só em `npm run dev`: permite simular notas pelo console/testes de navegador.
+  if (import.meta.env.DEV) (window as unknown as { __inputHub: unknown }).__inputHub = inputHub;
+
   const deviceNames = $derived(midi.status === 'ready' ? connectedDeviceNames() : []);
 </script>
 
