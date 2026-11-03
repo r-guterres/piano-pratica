@@ -1,31 +1,85 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { attachComputerKeyboard, ComputerKeyboardMapper } from './input/computerKeyboard';
+  import './input/held.svelte';
+  import { inputHub } from './input/hub';
+  import { autoConnectMidi, connectedDeviceNames, connectMidi, midi } from './input/midi.svelte';
+  import Library, { type ScoreSource } from './ui/Library.svelte';
   import MidiMonitor from './ui/MidiMonitor.svelte';
+  import SettingsScreen from './ui/SettingsScreen.svelte';
+  import { settings } from './ui/settings.svelte';
 
-  // Navegação simples por estado; novas telas entram aqui nos próximos marcos.
-  const screens = [{ id: 'monitor', label: 'Monitor MIDI' }] as const;
-  let screen = $state<(typeof screens)[number]['id']>('monitor');
+  // Navegação simples por estado (sem roteador).
+  const screens = [
+    { id: 'library', label: 'Partituras' },
+    { id: 'monitor', label: 'Monitor MIDI' },
+    { id: 'settings', label: 'Configurações' },
+  ] as const;
+  type ScreenId = (typeof screens)[number]['id'];
+  let screen = $state<ScreenId>('library');
+  let openScore = $state<ScoreSource | null>(null);
+
+  // O leitor (com o OSMD, ~1 MB) só é baixado quando uma partitura é aberta.
+  const loadReader = () => import('./ui/ScoreReader.svelte');
+
+  const mapper = new ComputerKeyboardMapper();
+  $effect(() => {
+    if (!settings.input.computerKeyboard) return;
+    return attachComputerKeyboard(mapper, (e) => inputHub.emit(e, 'computer'));
+  });
+
+  onMount(() => {
+    void autoConnectMidi();
+  });
+
+  const deviceNames = $derived(midi.status === 'ready' ? connectedDeviceNames() : []);
 </script>
 
-<header>
-  <h1>Piano Prática</h1>
-  <nav>
-    {#each screens as s (s.id)}
-      <button class:active={screen === s.id} onclick={() => (screen = s.id)}>{s.label}</button>
-    {/each}
-  </nav>
-</header>
+{#if openScore}
+  {#await loadReader()}
+    <p class="loading">Carregando leitor…</p>
+  {:then { default: ScoreReader }}
+    <ScoreReader source={openScore} onclose={() => (openScore = null)} />
+  {:catch err}
+    <p class="loading">Não consegui carregar o leitor: {String(err)}</p>
+  {/await}
+{:else}
+  <header>
+    <h1>Piano Prática</h1>
+    <nav>
+      {#each screens as s (s.id)}
+        <button class:active={screen === s.id} onclick={() => (screen = s.id)}>{s.label}</button>
+      {/each}
+    </nav>
+    <div class="midi">
+      {#if midi.status === 'ready'}
+        <span class="dot" class:on={deviceNames.length > 0}></span>
+        {deviceNames.length ? deviceNames.join(', ') : 'MIDI: nenhum dispositivo'}
+      {:else if midi.status === 'connecting'}
+        MIDI: aguardando permissão…
+      {:else if midi.status === 'unsupported'}
+        <span class="muted">Sem Web MIDI</span>
+      {:else}
+        <button onclick={() => connectMidi()}>Conectar MIDI</button>
+      {/if}
+    </div>
+  </header>
 
-<main>
-  {#if screen === 'monitor'}
-    <MidiMonitor />
-  {/if}
-</main>
+  <main>
+    {#if screen === 'library'}
+      <Library onopen={(s) => (openScore = s)} />
+    {:else if screen === 'monitor'}
+      <MidiMonitor />
+    {:else}
+      <SettingsScreen />
+    {/if}
+  </main>
+{/if}
 
 <style>
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.5rem 1rem;
     padding: 0.75rem 1rem;
@@ -38,6 +92,7 @@
   }
   nav {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
   }
   nav button.active {
@@ -45,11 +100,31 @@
     color: var(--on-accent);
     border-color: var(--accent);
   }
+  .midi {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+  .dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .dot.on {
+    background: var(--ok);
+  }
   main {
     max-width: 60rem;
     margin: 0 auto;
     padding: 1rem;
     display: grid;
     gap: 1rem;
+  }
+  .loading {
+    padding: 2rem;
+    text-align: center;
   }
 </style>

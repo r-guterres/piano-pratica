@@ -2,15 +2,11 @@
   import { onDestroy } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { pitchName } from '../core/pitch';
-  import {
-    checkMidiSupport,
-    describeMidiError,
-    MidiConnection,
-    type MidiDeviceInfo,
-  } from '../midi/access';
+  import { connectMidi, getMidiConnection, midi } from '../input/midi.svelte';
+  import { checkMidiSupport, type MidiConnection, type MidiDeviceInfo } from '../midi/access';
   import { formatBytes, type MidiMessage } from '../midi/parse';
   import PianoKeyboard from './PianoKeyboard.svelte';
-  import { saveSettings, settings } from './settings.svelte';
+  import { settings } from './settings.svelte';
 
   type RowBase = { id: number; t: number; device: string; channel: number | null };
   type EventRow = RowBase &
@@ -27,9 +23,6 @@
   const commit = (import.meta.env.VITE_COMMIT ?? 'dev').slice(0, 7);
   const buildTime = new Date(__BUILD_TIME__).toLocaleString('pt-BR');
 
-  let status = $state<'idle' | 'connecting' | 'ready' | 'error'>('idle');
-  let errorText = $state('');
-  let devices = $state<MidiDeviceInfo[]>([]);
   let selectedId = $state<string>('');
   let rows = $state<EventRow[]>([]);
   let log = $state<string[]>([]);
@@ -38,7 +31,8 @@
   let lastNote = $state<{ pitch: number; velocity: number } | null>(null);
   const held = new SvelteSet<number>();
 
-  let connection: MidiConnection | null = null;
+  // A conexão MIDI é do app inteiro (input/midi.svelte.ts); o monitor só a escuta.
+  let unsubscribe: (() => void)[] = [];
   let t0: number | null = null;
   let nextId = 0;
 
@@ -107,37 +101,41 @@
     return `${d.name}${d.manufacturer ? ` (${d.manufacturer})` : ''} — ${d.state}/${d.connection}`;
   }
 
-  async function connect() {
-    status = 'connecting';
-    errorText = '';
-    addLog('Pedindo acesso MIDI…');
-    try {
-      connection = await MidiConnection.open();
-    } catch (err) {
-      status = 'error';
-      errorText = describeMidiError(err);
-      addLog(`Erro: ${errorText}`);
-      return;
+  function attach(connection: MidiConnection) {
+    if (unsubscribe.length) return;
+    addLog(`Acesso MIDI ativo. ${connection.inputs.length} entrada(s).`);
+    for (const d of connection.inputs) addLog(`  • ${describeDevice(d)}`);
+    unsubscribe = [
+      connection.onMessage(handleMessage),
+      connection.onDevicesChange((list, changed) => {
+        if (changed) addLog(`Dispositivo: ${describeDevice(changed)}`);
+        if (selectedId && !list.some((d) => d.id === selectedId && d.state === 'connected')) {
+          held.clear();
+        }
+      }),
+    ];
+  }
+
+  // pega a conexão também quando ela é aberta automaticamente ou em outra tela
+  $effect(() => {
+    if (midi.status === 'ready') {
+      const c = getMidiConnection();
+      if (c) attach(c);
     }
-    status = 'ready';
-    devices = connection.inputs;
-    addLog(`Acesso MIDI concedido. ${devices.length} entrada(s).`);
-    for (const d of devices) addLog(`  • ${describeDevice(d)}`);
-    connection.onMessage(handleMessage);
-    connection.onDevicesChange((list, changed) => {
-      devices = list;
-      if (changed) addLog(`Dispositivo: ${describeDevice(changed)}`);
-      if (selectedId && !list.some((d) => d.id === selectedId && d.state === 'connected')) {
-        held.clear();
-      }
-    });
+  });
+
+  async function connect() {
+    addLog('Pedindo acesso MIDI…');
+    const c = await connectMidi();
+    if (c) attach(c);
+    else addLog(`Erro: ${midi.error}`);
   }
 
   function selectDevice() {
-    connection?.select(selectedId || null);
+    getMidiConnection()?.select(selectedId || null);
     held.clear();
     addLog(
-      `Escutando: ${selectedId ? (devices.find((d) => d.id === selectedId)?.name ?? selectedId) : 'todos'}`,
+      `Escutando: ${selectedId ? (midi.devices.find((d) => d.id === selectedId)?.name ?? selectedId) : 'todos'}`,
     );
   }
 
@@ -154,7 +152,7 @@
     const text = [
       `piano-pratica ${commit} (${buildTime})`,
       navigator.userAgent,
-      ...devices.map(describeDevice),
+      ...midi.devices.map(describeDevice),
       '',
       ...log.toReversed(),
     ].join('\n');
@@ -166,7 +164,7 @@
     }
   }
 
-  onDestroy(() => connection?.close());
+  onDestroy(() => unsubscribe.forEach((off) => off()));
 </script>
 
 <section class="card">
@@ -187,22 +185,22 @@
 
 <section class="card">
   <h2>Dispositivos</h2>
-  {#if status === 'idle' || status === 'error'}
+  {#if midi.status === 'idle' || midi.status === 'error'}
     <button class="primary" onclick={connect} disabled={!support.ok}>Conectar MIDI</button>
-  {:else if status === 'connecting'}
+  {:else if midi.status === 'connecting'}
     <p>Aguardando permissão… (aceite o pedido do navegador)</p>
   {/if}
-  {#if errorText}<p class="error">{errorText}</p>{/if}
+  {#if midi.error}<p class="error">{midi.error}</p>{/if}
 
-  {#if status === 'ready'}
-    {#if devices.length === 0}
+  {#if midi.status === 'ready'}
+    {#if midi.devices.length === 0}
       <p class="warn">
         Nenhuma entrada MIDI. Confira o cabo OTG, ligue o teclado e espere alguns segundos — a lista
         se atualiza sozinha.
       </p>
     {:else}
       <ul class="devices">
-        {#each devices as d (d.id)}
+        {#each midi.devices as d (d.id)}
           <li class:disconnected={d.state !== 'connected'}>
             <strong>{d.name}</strong>
             {#if d.manufacturer}<span class="muted"> · {d.manufacturer}</span>{/if}
@@ -214,7 +212,7 @@
         Escutar
         <select bind:value={selectedId} onchange={selectDevice}>
           <option value="">Todos os dispositivos</option>
-          {#each devices as d (d.id)}
+          {#each midi.devices as d (d.id)}
             <option value={d.id}>{d.name}</option>
           {/each}
         </select>
@@ -283,32 +281,7 @@
   </div>
 </section>
 
-<section class="card">
-  <h2>Nomes das notas</h2>
-  <div class="settings">
-    <label class="field">
-      Dó central
-      <select bind:value={settings.naming.octave} onchange={saveSettings}>
-        <option value="middle-c-4">Dó4 (científica)</option>
-        <option value="middle-c-3">Dó3 (franco-belga)</option>
-      </select>
-    </label>
-    <label class="field">
-      Nomes
-      <select bind:value={settings.naming.style} onchange={saveSettings}>
-        <option value="solfege">Dó Ré Mi</option>
-        <option value="letters">C D E</option>
-      </select>
-    </label>
-    <label class="field">
-      Teclas pretas
-      <select bind:value={settings.naming.accidental} onchange={saveSettings}>
-        <option value="sharp">sustenidos (♯)</option>
-        <option value="flat">bemóis (♭)</option>
-      </select>
-    </label>
-  </div>
-</section>
+<p class="muted small">Nomes das notas (Dó/C, oitava, ♯/♭): em <strong>Configurações</strong>.</p>
 
 <section class="card">
   <div class="now-head">
