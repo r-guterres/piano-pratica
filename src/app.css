@@ -13,6 +13,7 @@
   --key-white: #fdfdfb;
   --key-black: #222222;
   --key-border: #9a958b;
+  --marked: #e0a100;
   color-scheme: light;
 }
 
@@ -32,6 +33,7 @@
     --key-white: #e8e6e1;
     --key-black: #0d0d0d;
     --key-border: #55514b;
+    --marked: #f2c14e;
     color-scheme: dark;
   }
 }
@@ -97,4 +99,61 @@ button.primary {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---- Partitura (elementos criados por src/score/ScoreView.ts) ---- */
+
+.score-viewport {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.score-sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.score-host svg,
+.score-overlay svg {
+  display: block;
+}
+
+.score-overlay {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  z-index: 2;
+  background: #fffdf8;
+  border-bottom: 2px dashed rgba(47, 111, 179, 0.45);
+}
+
+.score-overlay-clip {
+  overflow: hidden;
+}
+
+.score-viewport.rendering::after {
+  content: 'Ajustando a partitura…';
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+/* Cursor do OSMD: linha fina e discreta (o OSMD desenha uma barra larga). */
+.score-host img[id^='cursorImg'] {
+  width: 3px !important;
+  opacity: 0.75;
 }
