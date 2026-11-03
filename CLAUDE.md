@@ -7,7 +7,7 @@ profissional: explique as decisões técnicas em poucas linhas.
 
 ## Estado atual
 
-- **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); aguardando o teste de aceite no tablet.
+- **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); **aceito no tablet em 2026-11-03** (Casio reconhecido, notas, velocity e pedal ok).
 - Próximo: **M1** (partitura com OSMD em layout de página, `input/` com 3 fontes, extração de passos).
 
 ## Decisões tomadas
@@ -28,6 +28,7 @@ profissional: explique as decisões técnicas em poucas linhas.
 - M2: no modo de uma só mão, ignorar as notas da outra mão (proposta) em vez de contá-las como erro.
 - M2: apojaturas tocadas são ignoradas (não contam como erro nem bloqueiam).
 - M1: a meia-virada de página fica por último, depois da virada simples e da manual.
+- M1: levar as preferências de nomes de notas (Dó4/Dó3, Dó Ré Mi/C D E, ♯/♭) para uma tela global de Configurações acessível pelo cabeçalho — hoje ficam no fim do Monitor MIDI e passam despercebidas.
 
 ## Estrutura
 
