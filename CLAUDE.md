@@ -7,7 +7,7 @@ profissional: explique as decisões técnicas em poucas linhas.
 
 ## Estado atual
 
-- **M0 (fundação + Monitor MIDI):** implementado; aguardando o teste de aceite no tablet.
+- **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); aguardando o teste de aceite no tablet.
 - Próximo: **M1** (partitura com OSMD em layout de página, `input/` com 3 fontes, extração de passos).
 
 ## Decisões tomadas
@@ -50,16 +50,16 @@ Os testes ficam ao lado do código (`foo.test.ts`).
 O Node não estava no PATH do Bash do Claude Code. Se `node` não for encontrado, prefixe
 `export PATH="/c/Program Files/nodejs:/c/Program Files/GitHub CLI:$PATH";`.
 
-| Comando                             | O que faz                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                       | servidor de desenvolvimento (http://localhost:5173)                                                       |
-| `npm run dev:lan`                   | idem, exposto na rede local (sem HTTPS → o Web MIDI não funciona no tablet)                               |
-| `npm test` / `npm run test:watch`   | Vitest                                                                                                    |
-| `npm run lint` / `npm run format`   | ESLint + Prettier (verificar / corrigir)                                                                  |
-| `npm run check`                     | svelte-check (tipos)                                                                                      |
-| `npm run build` / `npm run preview` | build de produção em `dist/` / servir o build em `/piano-pratica/`                                        |
-| `npm run verify`                    | tudo o que o CI roda (lint + check + test + build)                                                        |
-| **deploy**                          | `git push` na `main` → GitHub Actions publica em `https://<usuario>.github.io/piano-pratica/` em ~1–2 min |
+| Comando                             | O que faz                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                       | servidor de desenvolvimento (http://localhost:5173)                                                        |
+| `npm run dev:lan`                   | idem, exposto na rede local (sem HTTPS → o Web MIDI não funciona no tablet)                                |
+| `npm test` / `npm run test:watch`   | Vitest                                                                                                     |
+| `npm run lint` / `npm run format`   | ESLint + Prettier (verificar / corrigir)                                                                   |
+| `npm run check`                     | svelte-check (tipos)                                                                                       |
+| `npm run build` / `npm run preview` | build de produção em `dist/` / servir o build em `/piano-pratica/`                                         |
+| `npm run verify`                    | tudo o que o CI roda (lint + check + test + build)                                                         |
+| **deploy**                          | `git push` na `main` → GitHub Actions publica em `https://r-guterres.github.io/piano-pratica/` em ~1–2 min |
 
 ## Regras de trabalho (resumo do plano, seção 10)
 
