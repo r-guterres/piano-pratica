@@ -9,7 +9,7 @@
 // - Zoom e mudança de tamanho/orientação re-renderizam e recolocam o cursor
 //   pelo índice da posição, não por pixels.
 
-import { CursorType, OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
+import { CursorType, OpenSheetMusicDisplay, type GraphicalNote } from 'opensheetmusicdisplay';
 import { planHalfTurn, type SystemBox } from './halfTurn';
 import { extractTimeline } from './timeline';
 import type { TimelinePosition } from './types';
@@ -61,6 +61,11 @@ export class ScoreView {
   #loaded = false;
   #size = { w: 0, h: 0 };
   #resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** notas gráficas sob o cursor em cada posição (refeito a cada renderização) */
+  #notesIndex: GraphicalNote[][] = [];
+  /** cores aplicadas: posição → altura → cor (sobrevive a re-renderizações) */
+  readonly #colors = new Map<number, Map<number, string>>();
+  readonly #flashTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(
     viewport: HTMLElement,
@@ -102,6 +107,7 @@ export class ScoreView {
       this.#loaded = true;
       this.#position = 0;
       this.#manualPage = null;
+      this.#colors.clear();
       this.#layout();
     } finally {
       this.#setRendering(false);
@@ -161,7 +167,101 @@ export class ScoreView {
     this.#updateView();
   }
 
+  // ---- cores nas cabeças de nota (feedback de acerto/erro) ----
+
+  /** Pinta (ou, com null, despinta) as cabeças de nota das alturas dadas na posição. */
+  colorNotes(position: number, pitches: Iterable<number>, color: string | null): void {
+    let byPitch = this.#colors.get(position);
+    for (const pitch of pitches) {
+      if (color === null) byPitch?.delete(pitch);
+      else {
+        if (!byPitch) this.#colors.set(position, (byPitch = new Map()));
+        byPitch.set(pitch, color);
+      }
+      this.#paint(position, pitch, color);
+    }
+  }
+
+  /** Remove as cores (de todas as posições, ou só das indicadas). */
+  clearColors(positions?: Iterable<number>): void {
+    for (const position of positions ?? [...this.#colors.keys()]) {
+      const byPitch = this.#colors.get(position);
+      if (!byPitch) continue;
+      for (const pitch of byPitch.keys()) this.#paint(position, pitch, null);
+      this.#colors.delete(position);
+    }
+  }
+
+  /** Pisca uma cor por `ms` e volta à cor guardada. */
+  flash(position: number, pitches: readonly number[], color: string, ms = 450): void {
+    for (const p of pitches) this.#paint(position, p, color);
+    const timer = setTimeout(() => {
+      this.#flashTimers.delete(timer);
+      for (const p of pitches) this.#paint(position, p, this.#colors.get(position)?.get(p) ?? null);
+    }, ms);
+    this.#flashTimers.add(timer);
+  }
+
+  #paint(position: number, pitch: number, color: string | null): void {
+    for (const head of this.#noteheads(position, pitch)) {
+      for (const path of head.querySelectorAll<SVGElement>('path')) {
+        path.style.fill = color ?? '';
+        path.style.stroke = color ?? '';
+      }
+    }
+  }
+
+  /**
+   * Cabeças de nota da altura `pitch` na posição (sem continuações de ligadura
+   * nem apojaturas). O OSMD devolve todas as cabeças de um acorde juntas; elas
+   * são pareadas com as notas por altura: a mais grave é a mais baixa na pauta.
+   */
+  #noteheads(position: number, pitch: number): Element[] {
+    const notes = this.#notesIndex[position] ?? [];
+    const heads: Element[] = [];
+    for (const g of notes) {
+      const src = g.sourceNote;
+      const tieContinuation = src.NoteTie !== undefined && src.NoteTie.StartNote !== src;
+      if (src.halfTone + 12 !== pitch || tieContinuation || src.IsGraceNote) continue;
+      const vf = (g as unknown as { getVFNoteSVG?: () => Element | null }).getVFNoteSVG?.();
+      const all = (g as unknown as { getNoteheadSVGs?: () => Element[] }).getNoteheadSVGs?.() ?? [];
+      if (all.length <= 1) {
+        heads.push(...all);
+        continue;
+      }
+      const chord = notes
+        .filter(
+          (o) => (o as unknown as { getVFNoteSVG?: () => Element | null }).getVFNoteSVG?.() === vf,
+        )
+        .sort((a, b) => a.sourceNote.halfTone - b.sourceNote.halfTone);
+      const byHeight = [...all].sort(
+        (a, b) => (b as SVGGraphicsElement).getBBox().y - (a as SVGGraphicsElement).getBBox().y,
+      );
+      const head = chord.length === byHeight.length ? byHeight[chord.indexOf(g)] : undefined;
+      heads.push(...(head ? [head] : all));
+    }
+    return heads;
+  }
+
+  #buildNotesIndex(): void {
+    const cursor = this.osmd.cursor;
+    cursor.reset();
+    const index: GraphicalNote[][] = [];
+    for (let k = 0; k < this.timeline.length && !cursor.iterator.EndReached; k++) {
+      index.push(cursor.GNotesUnderCursor());
+      cursor.iterator.moveToNextVisibleVoiceEntry(false);
+    }
+    this.#notesIndex = index;
+  }
+
+  #repaintAll(): void {
+    for (const [position, byPitch] of this.#colors) {
+      for (const [pitch, color] of byPitch) this.#paint(position, pitch, color);
+    }
+  }
+
   destroy(): void {
+    for (const t of this.#flashTimers) clearTimeout(t);
     clearTimeout(this.#resizeTimer);
     this.#resizeObserver.disconnect();
     this.osmd.clear();
@@ -202,7 +302,9 @@ export class ScoreView {
     this.osmd.Zoom = this.#options.zoom[this.orientation];
     this.osmd.render();
     this.osmd.cursor.show();
+    this.#buildNotesIndex();
     this.#replayCursorTo(this.#position);
+    this.#repaintAll();
     this.#updateView();
   }
 
