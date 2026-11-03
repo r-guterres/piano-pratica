@@ -10,6 +10,7 @@
 //   pelo índice da posição, não por pixels.
 
 import { CursorType, OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
+import { planHalfTurn, type SystemBox } from './halfTurn';
 import { extractTimeline } from './timeline';
 import type { TimelinePosition } from './types';
 
@@ -36,11 +37,6 @@ export interface ScoreViewState {
   orientation: Orientation;
   measure: number;
   rendering: boolean;
-}
-
-interface SystemBox {
-  top: number;
-  bottom: number;
 }
 
 /** OSMD: 1 unidade = 10 px no zoom 1. */
@@ -283,27 +279,17 @@ export class ScoreView {
   }
 
   /**
-   * Se o cursor estiver num sistema da metade de baixo da página p, cobre a
-   * metade de cima com o começo da página p+1. Retorna true se aplicou.
+   * Se o cursor estiver na metade de baixo da página p, cobre a metade de cima
+   * com o começo da página p+1 (regra em halfTurn.ts). Retorna true se aplicou.
    */
   #showHalfTurn(p: number, nextPageEl: HTMLElement): boolean {
-    const pageHeight = this.#size.h;
-    const systems = this.#systems(p);
-    const firstLower = systems.find((s) => s.top >= pageHeight / 2);
-    if (!firstLower || this.#cursorTop() < firstLower.top - 1) return false;
-
-    // altura coberta: até um pouco acima do primeiro sistema da metade de baixo
-    const coverHeight = Math.max(0, firstLower.top - 4);
-    // na página seguinte, mostra só os sistemas que cabem inteiros
-    const fitting = this.#systems(p + 1).filter((s) => s.bottom <= coverHeight);
-    const clipHeight = fitting.length ? fitting[fitting.length - 1]!.bottom + 4 : 0;
-
+    const plan = planHalfTurn(this.#systems(p), this.#systems(p + 1), this.#cursorTop());
     const svg = nextPageEl.querySelector('svg');
-    if (!svg || clipHeight === 0) return false;
+    if (!plan || !svg) return false;
     const clip = el('div', 'score-overlay-clip');
-    clip.style.height = `${clipHeight}px`;
+    clip.style.height = `${plan.clipHeight}px`;
     clip.append(svg.cloneNode(true));
-    this.#overlay.style.height = `${coverHeight}px`;
+    this.#overlay.style.height = `${plan.coverHeight}px`;
     this.#overlay.style.display = 'block';
     this.#overlay.append(clip);
     return true;
