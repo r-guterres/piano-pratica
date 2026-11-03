@@ -8,8 +8,9 @@ profissional: explique as decisões técnicas em poucas linhas.
 ## Estado atual
 
 - **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); **aceito no tablet em 2026-11-03** (Casio reconhecido, notas, velocity e pedal ok).
-- **M1 (partitura + entrada + passos):** implementado; aguardando o teste de aceite no tablet.
-- Próximo: **M2** (motor de comparação do modo espera, feedback nas notas, loop de compassos, resumo).
+- **M1 (partitura + entrada + passos):** implementado; meia-virada corrigida (68f924d). Aceite no tablet: tudo ok exceto a meia-virada, que ainda precisa ser reconferida.
+- **M2 (modo espera):** implementado; aguardando o teste de aceite no tablet.
+- Próximo: **M3** (treino de leitura com VexFlow + priorização).
 
 ## Decisões tomadas
 
@@ -35,10 +36,9 @@ profissional: explique as decisões técnicas em poucas linhas.
 
 ### Pendências de decisão (para os marcos futuros)
 
-- M2: no modo de uma só mão, ignorar as notas da outra mão (proposta) em vez de contá-las como erro.
-- M2: apojaturas tocadas são ignoradas (não contam como erro nem bloqueiam).
-- M2: notas da mesma altura tocadas pelas duas mãos no mesmo passo viram uma só exigência (uníssono).
-- M2: a partitura segue os ritornelos do jeito que o iterador do OSMD seguir; o loop por compassos precisa considerar compassos repetidos.
+- Decidido no M2: com uma só mão, notas da outra mão são **toleradas** (nem exigidas nem erro); apojaturas e re-ataque de nota ligada também (`Step.tolerated`). Uníssono entre as mãos = uma exigência.
+- M4: salvar o `WaitModeSummary` de cada sessão no IndexedDB (o resumo já é um objeto serializável).
+- Ritornelos: a partitura segue o que o iterador do OSMD seguir; o loop usa a **primeira passagem** do trecho (`loopStepRange`).
 - M4: arquivos importados ainda não são salvos (só abertos).
 - O Minueto (BWV Anh. 114) foi transcrito de memória: o Robert deve conferir com uma edição impressa.
 
@@ -51,7 +51,8 @@ src/
   input/      # hub.ts (PURO: InputHub, HeldNotes), computerKeyboard.ts, midi.svelte.ts (conexão única), held.svelte.ts
   score/      # types.ts, steps.ts (PURO), timeline.ts (OSMD → linha do tempo), ScoreView.ts (páginas, cursor, viradas)
   ui/         # App: Library, ScoreReader, MidiMonitor, SettingsScreen, PianoKeyboard; settings.svelte.ts (preferências)
-  practice/ drills/ storage/   # criados nos marcos M2–M4
+  practice/   # matcher.ts (PURO: compara note-ons com UM passo) e waitMode.ts (PURO: modo espera, loop, resumo)
+  drills/ storage/   # criados nos marcos M3–M4
 scripts/      # gen-scores.ts + musicxml.ts (gerador da biblioteca; roda com o Node, que remove os tipos sozinho)
 public/scores/  # biblioteca MusicXML gerada + index.json
 .github/workflows/deploy.yml  # lint + check + testes + build → GitHub Pages (somente na main)
@@ -89,7 +90,9 @@ O Node não estava no PATH do Bash do Claude Code. Se `node` não for encontrado
 - Não adicionar dependências sem justificá-las em uma linha (registrar abaixo).
 - Testes obrigatórios para `practice/` e `drills/` (e para o `midi/parse.ts`).
 - Bug relatado no tablet: **primeiro reproduzir com um teste** (sequência MIDI simulada), depois corrigir.
-- Testes de UI no PC: Edge headless controlado via DevTools Protocol (script descartável no scratchpad;
+- Modo espera: `ScoreReader` assina o `inputHub`, passa cada evento ao `WaitMode` e traduz os eventos dele em cores
+  (`ScoreView.colorNotes/flash`) e movimentos de cursor. O motor não conhece o OSMD nem o DOM.
+- Testes de UI no PC: Edge headless controlado via DevTools Protocol (script descartável no scratchpad; em `npm run dev` o `window.__inputHub` permite injetar notas;
   ainda não há Playwright no repositório).
 - Para depurar no tablet: o Monitor MIDI tem um **log de diagnóstico** com o botão "Copiar log". A versão
   (SHA do commit) aparece no topo; confira se o tablet não está com uma versão antiga em cache.
