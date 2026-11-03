@@ -88,6 +88,39 @@ describe('buildSteps', () => {
   });
 });
 
+describe('buildSteps — tolerated pitches', () => {
+  it('tolerates re-striking a tied note', () => {
+    const tl = timeline([n(67)], [n(67, 'right', { tieContinuation: true }), n(48, 'left')]);
+    const [, second] = buildSteps(tl, 'both');
+    expect(second).toMatchObject({ pitches: [48], tolerated: [67] });
+  });
+
+  it('tolerates grace notes of the step', () => {
+    const [step] = buildSteps(timeline([n(61, 'right', { grace: true }), n(62)]), 'both');
+    expect(step).toMatchObject({ pitches: [62], tolerated: [61] });
+  });
+
+  it('tolerates the other hand, including positions skipped since the previous step', () => {
+    const tl = timeline(
+      [n(72, 'right'), n(48, 'left')],
+      [n(50, 'left')],
+      [n(74, 'right'), n(52, 'left')],
+    );
+    const steps = buildSteps(tl, 'right');
+    expect(steps.map((s) => s.tolerated)).toEqual([[48], [50, 52]]);
+  });
+
+  it('tolerates nothing extra with both hands and no ties', () => {
+    const steps = buildSteps(timeline([n(72), n(48, 'left')], [n(74)]), 'both');
+    expect(steps.map((s) => s.tolerated)).toEqual([[], []]);
+  });
+
+  it('never tolerates a pitch that is required in the same step', () => {
+    const tl = timeline([n(60, 'right'), n(60, 'left', { tieContinuation: true })]);
+    expect(buildSteps(tl, 'both')[0]).toMatchObject({ pitches: [60], tolerated: [] });
+  });
+});
+
 describe('stepAtOrAfter', () => {
   const steps = buildSteps(timeline([n(60)], [], [n(62)], [], [n(64)]), 'both'); // posições 0, 2, 4
 

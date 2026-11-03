@@ -12,6 +12,12 @@ export interface Step {
   measure: number;
   /** Alturas exigidas, sem repetição, em ordem crescente. */
   pitches: MidiPitch[];
+  /**
+   * Alturas que não são exigidas mas também não contam como erro se tocadas:
+   * continuações de ligadura, apojaturas e (com uma só mão) notas da outra mão,
+   * desta posição e das posições puladas desde o passo anterior.
+   */
+  tolerated: MidiPitch[];
 }
 
 /**
@@ -22,23 +28,28 @@ export interface Step {
  */
 export function buildSteps(timeline: readonly TimelinePosition[], hands: HandSelection): Step[] {
   const steps: Step[] = [];
+  // notas não exigidas desde o passo anterior (posições puladas + a atual)
+  let tolerated = new Set<MidiPitch>();
   for (const pos of timeline) {
     const pitches = new Set<MidiPitch>();
     for (const n of pos.notes) {
-      if (n.tieContinuation || n.grace) continue;
-      if (hands !== 'both' && n.hand !== hands) continue;
-      pitches.add(n.pitch);
+      const required = !n.tieContinuation && !n.grace && (hands === 'both' || n.hand === hands);
+      (required ? pitches : tolerated).add(n.pitch);
     }
     if (pitches.size === 0) continue;
     steps.push({
       index: steps.length,
       position: pos.index,
       measure: pos.measure,
-      pitches: [...pitches].sort((a, b) => a - b),
+      pitches: sorted(pitches),
+      tolerated: sorted([...tolerated].filter((p) => !pitches.has(p))),
     });
+    tolerated = new Set();
   }
   return steps;
 }
+
+const sorted = (pitches: Iterable<MidiPitch>) => [...pitches].sort((a, b) => a - b);
 
 /**
  * Índice do primeiro passo cuja posição é ≥ `position` (ou -1 se não houver).
