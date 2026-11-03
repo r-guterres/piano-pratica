@@ -17,6 +17,10 @@ export default defineConfig(
     languageOptions: { globals: { ...globals.browser } },
   },
   {
+    files: ['scripts/**', '**/*.test.ts', '*.config.{js,ts}'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     // O TypeScript já verifica identificadores indefinidos (inclusive globais
     // declarados em vite-env.d.ts); recomendação do typescript-eslint.
     files: ['**/*.ts', '**/*.svelte'],

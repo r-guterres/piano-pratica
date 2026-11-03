@@ -1,0 +1,65 @@
+[
+  {
+    "id": "do-md-01",
+    "title": "Leitura em Dó — mão direita",
+    "composer": "piano-pratica",
+    "level": 1,
+    "tags": ["exercício", "MD", "clave de sol", "Dó maior"],
+    "file": "do-md-01.musicxml",
+    "source": "Exercício original deste projeto"
+  },
+  {
+    "id": "do-me-01",
+    "title": "Leitura em Dó — mão esquerda",
+    "composer": "piano-pratica",
+    "level": 1,
+    "tags": ["exercício", "ME", "clave de fá", "Dó maior"],
+    "file": "do-me-01.musicxml",
+    "source": "Exercício original deste projeto"
+  },
+  {
+    "id": "do-maos-juntas-01",
+    "title": "Mãos juntas em Dó",
+    "composer": "Tradicional (Mary Had a Little Lamb)",
+    "level": 1,
+    "tags": ["exercício", "mãos juntas", "Dó maior"],
+    "file": "do-maos-juntas-01.musicxml",
+    "source": "Melodia tradicional (domínio público); acompanhamento original deste projeto"
+  },
+  {
+    "id": "acordes-do-01",
+    "title": "Acordes em Dó, com ligaduras",
+    "composer": "piano-pratica",
+    "level": 2,
+    "tags": ["exercício", "acordes", "ligaduras", "mãos juntas", "Dó maior"],
+    "file": "acordes-do-01.musicxml",
+    "source": "Exercício original deste projeto"
+  },
+  {
+    "id": "estudo-leitura-32",
+    "title": "Estudo de leitura em Dó (32 compassos)",
+    "composer": "piano-pratica",
+    "level": 2,
+    "tags": ["exercício", "mãos juntas", "posições", "Dó maior", "várias páginas"],
+    "file": "estudo-leitura-32.musicxml",
+    "source": "Exercício original deste projeto"
+  },
+  {
+    "id": "ode-alegria",
+    "title": "Ode à Alegria (simplificada)",
+    "composer": "Ludwig van Beethoven",
+    "level": 1,
+    "tags": ["peça", "mãos juntas", "Dó maior", "domínio público"],
+    "file": "ode-alegria.musicxml",
+    "source": "Tema da 9ª Sinfonia (domínio público); arranjo simplificado original deste projeto"
+  },
+  {
+    "id": "minueto-sol",
+    "title": "Minueto em Sol maior (1ª parte)",
+    "composer": "Christian Petzold (atrib.)",
+    "level": 2,
+    "tags": ["peça", "mãos juntas", "Sol maior", "barroco", "domínio público"],
+    "file": "minueto-sol.musicxml",
+    "source": "Caderno de Anna Magdalena Bach, BWV Anh. 114 (domínio público). Compassos 1–16, sem ritornelo; transcrição deste projeto — confira com uma edição impressa."
+  }
+]
