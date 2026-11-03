@@ -8,27 +8,39 @@ profissional: explique as decisões técnicas em poucas linhas.
 ## Estado atual
 
 - **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); **aceito no tablet em 2026-11-03** (Casio reconhecido, notas, velocity e pedal ok).
-- Próximo: **M1** (partitura com OSMD em layout de página, `input/` com 3 fontes, extração de passos).
+- **M1 (partitura + entrada + passos):** implementado; aguardando o teste de aceite no tablet.
+- Próximo: **M2** (motor de comparação do modo espera, feedback nas notas, loop de compassos, resumo).
 
 ## Decisões tomadas
 
-| Tema                 | Decisão                                                                              | Motivo                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Hospedagem           | Repositório **público** `piano-pratica` + **GitHub Pages** (deploy via Actions)      | grátis, HTTPS (o Web MIDI exige contexto seguro)                                                            |
-| UI                   | **Svelte 5** (runes) + Vite, **sem SvelteKit**                                       | pouco código, bundle pequeno; o SvelteKit traria SSR/roteamento inúteis                                     |
-| Linguagem            | TypeScript **~6.0** (não 7.x)                                                        | o typescript-eslint e o svelte-check ainda não suportam o TS 7                                              |
-| Partitura            | **OSMD** (não Verovio)                                                               | cursor e iterador prontos, JS puro, coloração de notas                                                      |
-| Página da partitura  | `pageFormat` custom **com a proporção da tela** (1 página = 1 tela)                  | retrato e paisagem com a mesma lógica; ao mudar o zoom ou girar, reposicionar o cursor pelo índice do passo |
-| Oitava               | **Configurável**; padrão Dó central = **Dó4** (científica). Opção Dó3 (franco-belga) | `src/core/pitch.ts`                                                                                         |
-| Preferências         | `localStorage` (`src/ui/settings.svelte.ts`); o histórico irá para IndexedDB (M4)    | pequenas e por dispositivo                                                                                  |
-| PWA / service worker | Só no M4                                                                             | o cache do SW atrapalha a iteração durante o desenvolvimento                                                |
+| Tema                 | Decisão                                                                                                                                                                                                                                                                                        | Motivo                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Hospedagem           | Repositório **público** `piano-pratica` + **GitHub Pages** (deploy via Actions)                                                                                                                                                                                                                | grátis, HTTPS (o Web MIDI exige contexto seguro)                                                            |
+| UI                   | **Svelte 5** (runes) + Vite, **sem SvelteKit**                                                                                                                                                                                                                                                 | pouco código, bundle pequeno; o SvelteKit traria SSR/roteamento inúteis                                     |
+| Linguagem            | TypeScript **~6.0** (não 7.x)                                                                                                                                                                                                                                                                  | o typescript-eslint e o svelte-check ainda não suportam o TS 7                                              |
+| Partitura            | **OSMD** (não Verovio)                                                                                                                                                                                                                                                                         | cursor e iterador prontos, JS puro, coloração de notas                                                      |
+| Página da partitura  | `pageFormat` custom **com a proporção da tela** (1 página = 1 tela)                                                                                                                                                                                                                            | retrato e paisagem com a mesma lógica; ao mudar o zoom ou girar, reposicionar o cursor pelo índice do passo |
+| Oitava               | **Configurável**; padrão Dó central = **Dó4** (científica). Opção Dó3 (franco-belga)                                                                                                                                                                                                           | `src/core/pitch.ts`                                                                                         |
+| Preferências         | `localStorage` (`src/ui/settings.svelte.ts`); o histórico irá para IndexedDB (M4)                                                                                                                                                                                                              | pequenas e por dispositivo                                                                                  |
+| Leitor de partitura  | Páginas do OSMD empilhadas; mostrar a página = `translateY` sem animação. Cursor `ThinLeft`, afinado por CSS                                                                                                                                                                                   | página parada, cursor anda (§5.1)                                                                           |
+| Virada de página     | Padrão: vira quando o cursor passa para a página seguinte. **Meia-virada**: quando o cursor entra no 1º sistema da metade de baixo, uma camada cobre a metade de cima com os sistemas iniciais da página seguinte (cópia do SVG). Toque nas bordas (20%) = virada manual até o cursor se mover | ler adiante sem perder a linha atual                                                                        |
+| Zoom                 | Separado por orientação (`settings.score.zoom.portrait/landscape`)                                                                                                                                                                                                                             | em paisagem cabem poucos sistemas e costuma-se querer letra maior                                           |
+| Passos               | `score/timeline.ts` percorre o iterador do OSMD com o **mesmo método do cursor** (`moveToNextVisibleVoiceEntry(false)`); posição k da linha do tempo = cursor após k `next()`. `score/steps.ts` (puro) filtra ligaduras/apojaturas/mão                                                         | alinhamento passo ↔ cursor sem pixels                                                                       |
+| Mão                  | Instrumento com 2+ pautas: de cima = MD, demais = ME. Pauta única: clave de fá = ME, senão MD                                                                                                                                                                                                  | simples e cobre peças de piano                                                                              |
+| Entrada              | `input/hub.ts` reúne MIDI, teclado na tela (multitoque) e teclado do computador (A S D F… = brancas, W E T Y U = pretas, Z/X = oitava; por `KeyboardEvent.code`, igual em ABNT2)                                                                                                               | `practice/` não sabe de onde vem a nota                                                                     |
+| MIDI                 | Uma conexão para o app inteiro (`input/midi.svelte.ts`); conecta sozinho se a permissão já foi dada                                                                                                                                                                                            | Monitor e leitor compartilham                                                                               |
+| Carregamento         | O leitor (com o OSMD, ~370 kB gzip) é `import()` dinâmico                                                                                                                                                                                                                                      | a tela inicial abre rápido                                                                                  |
+| Biblioteca           | Gerada por `scripts/gen-scores.ts` (mini-notação → MusicXML, valida a duração dos compassos). Não editar `public/scores/*.musicxml` à mão: editar o script e rodar `npm run gen:scores`                                                                                                        | MusicXML escrito à mão é fácil de errar                                                                     |
+| PWA / service worker | Só no M4                                                                                                                                                                                                                                                                                       | o cache do SW atrapalha a iteração durante o desenvolvimento                                                |
 
 ### Pendências de decisão (para os marcos futuros)
 
 - M2: no modo de uma só mão, ignorar as notas da outra mão (proposta) em vez de contá-las como erro.
 - M2: apojaturas tocadas são ignoradas (não contam como erro nem bloqueiam).
-- M1: a meia-virada de página fica por último, depois da virada simples e da manual.
-- M1: levar as preferências de nomes de notas (Dó4/Dó3, Dó Ré Mi/C D E, ♯/♭) para uma tela global de Configurações acessível pelo cabeçalho — hoje ficam no fim do Monitor MIDI e passam despercebidas.
+- M2: notas da mesma altura tocadas pelas duas mãos no mesmo passo viram uma só exigência (uníssono).
+- M2: a partitura segue os ritornelos do jeito que o iterador do OSMD seguir; o loop por compassos precisa considerar compassos repetidos.
+- M4: arquivos importados ainda não são salvos (só abertos).
+- O Minueto (BWV Anh. 114) foi transcrito de memória: o Robert deve conferir com uma edição impressa.
 
 ## Estrutura
 
@@ -36,15 +48,22 @@ profissional: explique as decisões técnicas em poucas linhas.
 src/
   core/       # tipos compartilhados, puros: events.ts (NoteEvent/PedalEvent), pitch.ts (nomes de notas)
   midi/       # parse.ts (PURO: bytes → eventos) e access.ts (Web MIDI: permissão, dispositivos, hot-plug)
-  ui/         # telas Svelte: MidiMonitor, PianoKeyboard, settings
-  input/ score/ practice/ drills/ storage/   # criados nos marcos M1–M4
-public/scores/  # (M1) biblioteca MusicXML + index.json
+  input/      # hub.ts (PURO: InputHub, HeldNotes), computerKeyboard.ts, midi.svelte.ts (conexão única), held.svelte.ts
+  score/      # types.ts, steps.ts (PURO), timeline.ts (OSMD → linha do tempo), ScoreView.ts (páginas, cursor, viradas)
+  ui/         # App: Library, ScoreReader, MidiMonitor, SettingsScreen, PianoKeyboard; settings.svelte.ts (preferências)
+  practice/ drills/ storage/   # criados nos marcos M2–M4
+scripts/      # gen-scores.ts + musicxml.ts (gerador da biblioteca; roda com o Node, que remove os tipos sozinho)
+public/scores/  # biblioteca MusicXML gerada + index.json
 .github/workflows/deploy.yml  # lint + check + testes + build → GitHub Pages (somente na main)
 ```
 
 Princípio central: `core/`, `practice/`, `drills/` e `midi/parse.ts` **não dependem do navegador**.
 Eles recebem eventos `{type: 'on'|'off', pitch, velocity, t}` e são testados com sequências MIDI simuladas.
-Os testes ficam ao lado do código (`foo.test.ts`).
+Os testes ficam ao lado do código (`foo.test.ts`). `score/timeline.test.ts` roda o **OSMD de verdade no jsdom**
+(`// @vitest-environment jsdom`) sobre os arquivos da biblioteca: carregar e iterar funciona sem renderizar.
+
+`tsconfig.json` cobre o app (sem tipos do Node); `tsconfig.node.json` cobre `scripts/` e `*.test.ts`.
+No Windows, não crie arquivos que diferem só em maiúsculas/minúsculas (ex.: `Settings.svelte` × `settings.svelte.ts`).
 
 ## Comandos
 
@@ -60,6 +79,7 @@ O Node não estava no PATH do Bash do Claude Code. Se `node` não for encontrado
 | `npm run check`                     | svelte-check (tipos)                                                                                       |
 | `npm run build` / `npm run preview` | build de produção em `dist/` / servir o build em `/piano-pratica/`                                         |
 | `npm run verify`                    | tudo o que o CI roda (lint + check + test + build)                                                         |
+| `npm run gen:scores`                | regenera `public/scores/` a partir de `scripts/gen-scores.ts`                                              |
 | **deploy**                          | `git push` na `main` → GitHub Actions publica em `https://r-guterres.github.io/piano-pratica/` em ~1–2 min |
 
 ## Regras de trabalho (resumo do plano, seção 10)
@@ -69,16 +89,27 @@ O Node não estava no PATH do Bash do Claude Code. Se `node` não for encontrado
 - Não adicionar dependências sem justificá-las em uma linha (registrar abaixo).
 - Testes obrigatórios para `practice/` e `drills/` (e para o `midi/parse.ts`).
 - Bug relatado no tablet: **primeiro reproduzir com um teste** (sequência MIDI simulada), depois corrigir.
+- Testes de UI no PC: Edge headless controlado via DevTools Protocol (script descartável no scratchpad;
+  ainda não há Playwright no repositório).
 - Para depurar no tablet: o Monitor MIDI tem um **log de diagnóstico** com o botão "Copiar log". A versão
   (SHA do commit) aparece no topo; confira se o tablet não está com uma versão antiga em cache.
 
-## Dependências (todas de desenvolvimento no M0)
+## Dependências
+
+De produção:
+
+- `opensheetmusicdisplay`: renderização de MusicXML/.mxl, cursor e iterador (traz VexFlow e JSZip).
+  Tem `gl` como dependência opcional (renderização fora do navegador); o script de instalação dela não roda, e tudo bem.
+
+De desenvolvimento:
 
 - `vite`, `@sveltejs/vite-plugin-svelte`, `svelte`: build e framework.
 - `typescript`, `svelte-check`, `@tsconfig/svelte`: checagem de tipos.
 - `vitest`: testes de unidade.
 - `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-plugin-svelte`, `globals`: lint.
 - `prettier`, `prettier-plugin-svelte`, `eslint-config-prettier`: formatação.
+- `jsdom`: DOM para rodar o OSMD nos testes de integração.
+- `@types/node`: tipos para `scripts/` e testes.
 
 O `npm audit` acusa vulnerabilidades moderadas só em ferramentas de desenvolvimento;
 `npm audit --omit=dev` = 0.
