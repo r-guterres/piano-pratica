@@ -146,7 +146,10 @@
       const name = writtenName(e.item.note, naming);
       if (e.type === 'correct') {
         clearTimeout(flashTimer);
-        lastOk = `✓ ${name} · ${(e.reactionMs / 1000).toFixed(1).replace('.', ',')} s`;
+        // o tempo só faz sentido nos acertos de primeira (é o que entra na estatística)
+        lastOk = e.firstTry
+          ? `✓ ${name} · ${(e.reactionMs / 1000).toFixed(1).replace('.', ',')} s`
+          : `✓ ${name}`;
         render(e.firstTry ? COLOR.ok : COLOR.late);
         advanceTimer = setTimeout(showNext, e.firstTry ? 350 : 800);
       } else if (e.type === 'wrong') {
@@ -177,6 +180,10 @@
   const revealed = $derived.by(() => {
     void tick;
     return drill?.revealedNow ?? false;
+  });
+  const answered = $derived.by(() => {
+    void tick;
+    return drill?.answered ?? false;
   });
 
   function clockText(ms: number): string {
@@ -305,11 +312,14 @@
     <div class="staff" class:grand={shownClefs === 'grand'} bind:this={staffEl}></div>
 
     <div class="feedback">
-      {#if revealed && current}
-        <span class="reveal">Resposta: {writtenName(current.note, naming)}</span>
+      {#if answered && lastOk}
+        <span class="ok">{lastOk}</span>
+      {:else}
+        {#if revealed && current}
+          <span class="reveal">Resposta: {writtenName(current.note, naming)}</span>
+        {/if}
+        {#if lastWrong}<span class="bad">{lastWrong}</span>{/if}
       {/if}
-      {#if lastWrong}<span class="bad">{lastWrong}</span>{/if}
-      {#if !lastWrong && !revealed && lastOk}<span class="ok">{lastOk}</span>{/if}
     </div>
 
     {#if settings.input.virtualKeyboard}
