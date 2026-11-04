@@ -40,6 +40,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
-    "opensheetmusicdisplay": "^2.2.1"
+    "opensheetmusicdisplay": "^2.2.1",
+    "vexflow": "^5.0.0"
   }
 }

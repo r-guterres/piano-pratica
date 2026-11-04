@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+// (o módulo lê o localStorage ao ser importado)
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, mergeSettings } from './settings.svelte';
 
@@ -26,5 +28,13 @@ describe('mergeSettings', () => {
       portrait: DEFAULT_SETTINGS.score.zoom.portrait,
       landscape: 1.6,
     });
+  });
+
+  it('fills the reading drill settings, including a partial range', () => {
+    const s = mergeSettings({ drill: { clefs: 'bass', range: { bass: { low: 10 } } } });
+    expect(s.drill.clefs).toBe('bass');
+    expect(s.drill.range.bass).toEqual({ ...DEFAULT_SETTINGS.drill.range.bass, low: 10 });
+    expect(s.drill.range.treble).toEqual(DEFAULT_SETTINGS.drill.range.treble);
+    expect(s.drill.minutes).toBe(DEFAULT_SETTINGS.drill.minutes);
   });
 });
