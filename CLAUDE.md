@@ -9,8 +9,9 @@ profissional: explique as decisões técnicas em poucas linhas.
 
 - **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); **aceito no tablet em 2026-11-03** (Casio reconhecido, notas, velocity e pedal ok).
 - **M1 (partitura + entrada + passos):** implementado; meia-virada corrigida (68f924d). Aceite no tablet: tudo ok exceto a meia-virada, que ainda precisa ser reconferida.
-- **M2 (modo espera):** implementado; aguardando o teste de aceite no tablet.
-- Próximo: **M3** (treino de leitura com VexFlow + priorização).
+- **M2 (modo espera):** implementado; **aceito no tablet em 2026-11-03** (após a correção da outra mão chegando atrasada, 9fb630d).
+- **M3 (treino de leitura):** implementado; aguardando o teste de aceite no tablet.
+- Próximo: **M4** (IndexedDB, tela de progresso, PWA offline, exportar JSON).
 
 ## Decisões tomadas
 
@@ -32,12 +33,15 @@ profissional: explique as decisões técnicas em poucas linhas.
 | MIDI                 | Uma conexão para o app inteiro (`input/midi.svelte.ts`); conecta sozinho se a permissão já foi dada                                                                                                                                                                                                                                                                                                                                                                | Monitor e leitor compartilham                                                                               |
 | Carregamento         | O leitor (com o OSMD, ~370 kB gzip) é `import()` dinâmico                                                                                                                                                                                                                                                                                                                                                                                                          | a tela inicial abre rápido                                                                                  |
 | Biblioteca           | Gerada por `scripts/gen-scores.ts` (mini-notação → MusicXML, valida a duração dos compassos). Não editar `public/scores/*.musicxml` à mão: editar o script e rodar `npm run gen:scores`                                                                                                                                                                                                                                                                            | MusicXML escrito à mão é fácil de errar                                                                     |
+| Treino de leitura    | `drills/` (PURO): `notes.ts` (nota escrita = letra + alteração + oitava; item = clave + nota escrita), `priority.ts` (sorteio ponderado), `readingDrill.ts` (rodada). Pauta com **VexFlow 5** (`vexflow/bravura`, esperar a fonte Bravura carregar). A oitava conta. Após N erros mostra a resposta (nome + tecla marcada) e **espera a tecla certa**. Tempo de reação com `performance.now()` na UI (não o `t` do evento)                                         | mesmo relógio da apresentação da nota                                                                       |
+| Priorização          | Contagens com esquecimento por item (×0,85 a cada resposta): `p = (erros+1)/(tentativas+4)`, lentidão `s = clamp(t/mediana − 1, 0, 2)`, peso `0,05 + p + 0,5·s`; nunca repete a anterior (com 4+ notas, nem as duas últimas). Simulação de 5 min em `readingDrill.test.ts`: notas sempre erradas aparecem ~2,3× mais                                                                                                                                               | simples de explicar e de ajustar                                                                            |
 | PWA / service worker | Só no M4                                                                                                                                                                                                                                                                                                                                                                                                                                                           | o cache do SW atrapalha a iteração durante o desenvolvimento                                                |
 
 ### Pendências de decisão (para os marcos futuros)
 
 - Decidido no M2: com uma só mão, notas da outra mão são **toleradas** (nem exigidas nem erro); apojaturas e re-ataque de nota ligada também (`Step.tolerated`). As notas toleradas de um passo continuam toleradas no passo seguinte (a outra mão chega alguns ms depois; bug do tablet no c.1 do Minueto). Uníssono entre as mãos = uma exigência.
 - M4: salvar o `WaitModeSummary` de cada sessão no IndexedDB (o resumo já é um objeto serializável).
+- M4: salvar o `DrillSummary` e as `ItemStats` do `Prioritizer` (hoje ficam só na memória enquanto o app está aberto; `DrillScreen` tem um `Prioritizer` no escopo do módulo).
 - Ritornelos: a partitura segue o que o iterador do OSMD seguir; o loop usa a **primeira passagem** do trecho (`loopStepRange`).
 - M4: arquivos importados ainda não são salvos (só abertos).
 - O Minueto (BWV Anh. 114) foi transcrito de memória: o Robert deve conferir com uma edição impressa.
@@ -50,9 +54,10 @@ src/
   midi/       # parse.ts (PURO: bytes → eventos) e access.ts (Web MIDI: permissão, dispositivos, hot-plug)
   input/      # hub.ts (PURO: InputHub, HeldNotes), computerKeyboard.ts, midi.svelte.ts (conexão única), held.svelte.ts
   score/      # types.ts, steps.ts (PURO), timeline.ts (OSMD → linha do tempo), ScoreView.ts (páginas, cursor, viradas)
-  ui/         # App: Library, ScoreReader, MidiMonitor, SettingsScreen, PianoKeyboard; settings.svelte.ts (preferências)
+  ui/         # App: Library, ScoreReader, DrillScreen (+ DrillSummary, drillStaff.ts), MidiMonitor, SettingsScreen, PianoKeyboard; settings.svelte.ts
   practice/   # matcher.ts (PURO: compara note-ons com UM passo) e waitMode.ts (PURO: modo espera, loop, resumo)
-  drills/ storage/   # criados nos marcos M3–M4
+  drills/     # notes.ts (notas escritas, conjunto de itens), priority.ts e readingDrill.ts (PUROS); rng.ts (sorteio com semente p/ testes)
+  storage/    # criado no M4
 scripts/      # gen-scores.ts + musicxml.ts (gerador da biblioteca; roda com o Node, que remove os tipos sozinho)
 public/scores/  # biblioteca MusicXML gerada + index.json
 .github/workflows/deploy.yml  # lint + check + testes + build → GitHub Pages (somente na main)
@@ -102,6 +107,7 @@ O Node não estava no PATH do Bash do Claude Code. Se `node` não for encontrado
 De produção:
 
 - `opensheetmusicdisplay`: renderização de MusicXML/.mxl, cursor e iterador (traz VexFlow e JSZip).
+- `vexflow` 5: pauta do treino de leitura (o OSMD usa internamente o VexFlow 1.2, empacotado; não conflitam). A entrada `vexflow/bravura` embute as fontes (~390 kB gzip no pedaço do treino, carregado só ao abrir a aba).
   Tem `gl` como dependência opcional (renderização fora do navegador); o script de instalação dela não roda, e tudo bem.
 
 De desenvolvimento:
