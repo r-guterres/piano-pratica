@@ -15,7 +15,8 @@ export interface Step {
   /**
    * Alturas que não são exigidas mas também não contam como erro se tocadas:
    * continuações de ligadura, apojaturas e (com uma só mão) notas da outra mão,
-   * desta posição e das posições puladas desde o passo anterior.
+   * desta posição, das posições puladas e da posição do passo anterior (a outra
+   * mão costuma chegar alguns ms depois de a nota exigida já ter avançado o passo).
    */
   tolerated: MidiPitch[];
 }
@@ -28,14 +29,16 @@ export interface Step {
  */
 export function buildSteps(timeline: readonly TimelinePosition[], hands: HandSelection): Step[] {
   const steps: Step[] = [];
-  // notas não exigidas desde o passo anterior (posições puladas + a atual)
+  // notas não exigidas da posição do passo anterior até a atual
   let tolerated = new Set<MidiPitch>();
   for (const pos of timeline) {
     const pitches = new Set<MidiPitch>();
+    const others = new Set<MidiPitch>();
     for (const n of pos.notes) {
       const required = !n.tieContinuation && !n.grace && (hands === 'both' || n.hand === hands);
-      (required ? pitches : tolerated).add(n.pitch);
+      (required ? pitches : others).add(n.pitch);
     }
+    for (const p of others) tolerated.add(p);
     if (pitches.size === 0) continue;
     steps.push({
       index: steps.length,
@@ -44,7 +47,7 @@ export function buildSteps(timeline: readonly TimelinePosition[], hands: HandSel
       pitches: sorted(pitches),
       tolerated: sorted([...tolerated].filter((p) => !pitches.has(p))),
     });
-    tolerated = new Set();
+    tolerated = others;
   }
   return steps;
 }

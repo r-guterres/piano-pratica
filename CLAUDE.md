@@ -36,7 +36,7 @@ profissional: explique as decisões técnicas em poucas linhas.
 
 ### Pendências de decisão (para os marcos futuros)
 
-- Decidido no M2: com uma só mão, notas da outra mão são **toleradas** (nem exigidas nem erro); apojaturas e re-ataque de nota ligada também (`Step.tolerated`). Uníssono entre as mãos = uma exigência.
+- Decidido no M2: com uma só mão, notas da outra mão são **toleradas** (nem exigidas nem erro); apojaturas e re-ataque de nota ligada também (`Step.tolerated`). As notas toleradas de um passo continuam toleradas no passo seguinte (a outra mão chega alguns ms depois; bug do tablet no c.1 do Minueto). Uníssono entre as mãos = uma exigência.
 - M4: salvar o `WaitModeSummary` de cada sessão no IndexedDB (o resumo já é um objeto serializável).
 - Ritornelos: a partitura segue o que o iterador do OSMD seguir; o loop usa a **primeira passagem** do trecho (`loopStepRange`).
 - M4: arquivos importados ainda não são salvos (só abertos).

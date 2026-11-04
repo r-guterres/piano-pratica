@@ -42,6 +42,26 @@ describe('playing whole library pieces in wait mode', () => {
     });
   }
 
+  // Bug do tablet (M2): na MD, o acorde da ME no c.1 do Minueto, tocado junto mas
+  // chegando uns ms depois da nota da MD, contava como erro no passo seguinte.
+  for (const hands of ['right', 'left'] as const) {
+    it(`tolerates the other hand arriving slightly late (${hands} hand)`, async () => {
+      for (const { id } of index) {
+        const timeline = await timelineOf(id);
+        const mode = new WaitMode(buildSteps(timeline, hands));
+        let t = 0;
+        const press = (pitch: number) =>
+          mode.handle({ type: 'on', pitch, velocity: 80, t: (t += 15) });
+        for (const pos of timeline) {
+          const struck = pos.notes.filter((n) => !n.tieContinuation && !n.grace);
+          struck.filter((n) => n.hand === hands).forEach((n) => press(n.pitch));
+          struck.filter((n) => n.hand !== hands).forEach((n) => press(n.pitch));
+        }
+        expect(mode.summary().wrongNotes, id).toBe(0);
+      }
+    });
+  }
+
   it('counts errors in the right measure of a real piece', async () => {
     const steps = buildSteps(await timelineOf('do-md-01'), 'both');
     const mode = new WaitMode(steps);

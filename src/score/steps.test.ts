@@ -100,14 +100,15 @@ describe('buildSteps — tolerated pitches', () => {
     expect(step).toMatchObject({ pitches: [62], tolerated: [61] });
   });
 
-  it('tolerates the other hand, including positions skipped since the previous step', () => {
+  it('tolerates the other hand from the previous step position up to the current one', () => {
     const tl = timeline(
       [n(72, 'right'), n(48, 'left')],
       [n(50, 'left')],
       [n(74, 'right'), n(52, 'left')],
     );
     const steps = buildSteps(tl, 'right');
-    expect(steps.map((s) => s.tolerated)).toEqual([[48], [50, 52]]);
+    // 48 continua tolerado no 2º passo: a ME pode chegar depois de a MD avançar
+    expect(steps.map((s) => s.tolerated)).toEqual([[48], [48, 50, 52]]);
   });
 
   it('tolerates nothing extra with both hands and no ties', () => {

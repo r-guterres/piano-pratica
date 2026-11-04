@@ -126,6 +126,18 @@ describe('WaitMode — required cases', () => {
     expect(mode.summary().wrongNotes).toBe(0);
   });
 
+  it('hand filter: the other hand may arrive just after the step advanced', () => {
+    // MD toca Ré5 e a ME o acorde Sol3-Si3-Ré4, que chega depois (já no passo do Sol4)
+    const tl = timeline([n(74), n(55, 'left'), n(59, 'left'), n(62, 'left')], [n(67)], [n(69)]);
+    const mode = new WaitMode(buildSteps(tl, 'right'));
+    play(mode, on(74), on(55), on(59), on(62));
+    expect(mode.current?.pitches).toEqual([67]);
+    expect(mode.summary().wrongNotes).toBe(0);
+    // mas um passo depois já não é tolerado
+    play(mode, on(67));
+    expect(types(play(mode, on(55)))).toEqual(['wrong']);
+  });
+
   it('hand filter: left hand only', () => {
     const tl = timeline([n(72), n(48, 'left')], [n(74)], [n(50, 'left')]);
     const mode = new WaitMode(buildSteps(tl, 'left'));
