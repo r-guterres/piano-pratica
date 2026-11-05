@@ -12,6 +12,8 @@ export interface TimelineNote {
   /** Continuação de ligadura (tie): a nota já soa, não é nova exigência. */
   tieContinuation: boolean;
   grace: boolean;
+  /** Quanto a nota soa, em semibreves (no início de uma ligadura, a soma das notas ligadas). */
+  duration: number;
 }
 
 /**
@@ -22,7 +24,23 @@ export interface TimelinePosition {
   index: number;
   /** Índice do compasso (0 = primeiro). */
   measure: number;
-  /** Instante em semibreves desde o início (1 = uma semibreve). */
+  /** Instante em semibreves desde o início (1 = uma semibreve), na partitura escrita. */
   time: number;
+  /** Instante na execução, em semibreves: igual a `time`, mas segue os ritornelos (só cresce). */
+  perfTime: number;
   notes: TimelineNote[];
+}
+
+/** Um compasso da partitura escrita. */
+export interface MeasureInfo {
+  index: number;
+  /** Início, em semibreves (na partitura escrita). */
+  start: number;
+  /** Duração real (menor que a fórmula num compasso de anacruse). */
+  duration: number;
+  /** Fórmula de compasso: 3/4 → beats 3, beatType 4. */
+  beats: number;
+  beatType: number;
+  /** Andamento escrito em semínimas por minuto (null se a partitura não indica). */
+  tempo: number | null;
 }

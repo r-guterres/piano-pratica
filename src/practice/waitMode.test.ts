@@ -18,6 +18,7 @@ const n = (
   staff: hand === 'right' ? 0 : 1,
   tieContinuation: false,
   grace: false,
+  duration: 0.25,
   ...extra,
 });
 
@@ -27,6 +28,7 @@ const timeline = (...positions: TimelineNote[][]): TimelinePosition[] =>
     index,
     measure: Math.floor(index / 2),
     time: index / 4,
+    perfTime: index / 4,
     notes,
   }));
 

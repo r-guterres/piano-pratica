@@ -21,6 +21,26 @@ export interface Settings {
     /** compact = Dó3–Dó6; full = Dó2–Dó7 (as 61 teclas do CTK-3500). */
     virtualRange: 'compact' | 'full';
   };
+  playback: {
+    /** Onde soam as notas da partitura e o metrônomo (sem MIDI, o tablet). */
+    notesOutput: SoundOutput;
+    clickOutput: SoundOutput;
+    /** Atraso do alto-falante (ms), calibrado; null = estimativa do navegador. */
+    speakerLatencyMs: number | null;
+    /** Compassos de contagem antes de começar. */
+    countIn: number;
+    /** Metrônomo ligado no modo acompanhar. */
+    metronome: boolean;
+    /** O que o app toca no modo acompanhar. */
+    listen: ListenMode;
+    /** Andamento das partituras sem andamento escrito (semínimas por minuto). */
+    defaultBpm: number;
+    /** Andamento escolhido por partitura (id → bpm). */
+    bpm: Record<string, number>;
+    /** Metrônomo avulso. */
+    metronomeBpm: number;
+    metronomeMeter: MetronomeMeter;
+  };
   drill: PoolConfig & {
     /** Erros na mesma nota antes de mostrar a resposta (0 = nunca). */
     revealAfter: number;
@@ -29,10 +49,28 @@ export interface Settings {
   };
 }
 
+export type SoundOutput = 'casio' | 'speaker';
+/** none = só o cursor; other = a mão que não está selecionada; all = tudo. */
+export type ListenMode = 'none' | 'other' | 'all';
+export const METRONOME_METERS = ['1/4', '2/4', '3/4', '4/4', '6/8'] as const;
+export type MetronomeMeter = (typeof METRONOME_METERS)[number];
+
 export const DEFAULT_SETTINGS: Settings = {
   naming: { ...DEFAULT_NAMING },
   score: { zoom: { portrait: 1, landscape: 1.2 }, pageTurn: 'full', hands: 'both' },
   input: { computerKeyboard: true, virtualKeyboard: false, virtualRange: 'compact' },
+  playback: {
+    notesOutput: 'casio',
+    clickOutput: 'casio',
+    speakerLatencyMs: null,
+    countIn: 1,
+    metronome: true,
+    listen: 'none',
+    defaultBpm: 80,
+    bpm: {},
+    metronomeBpm: 80,
+    metronomeMeter: '4/4',
+  },
   drill: {
     clefs: 'treble',
     // uma linha suplementar de cada lado: Dó4–Lá5 (sol) e Mi2–Dó4 (fá)
@@ -61,6 +99,11 @@ export function mergeSettings(saved: unknown): Settings {
       zoom: mergeZoom((s.score as { zoom?: unknown } | undefined)?.zoom),
     },
     input: { ...DEFAULT_SETTINGS.input, ...s.input },
+    playback: {
+      ...DEFAULT_SETTINGS.playback,
+      ...s.playback,
+      bpm: { ...(s.playback as { bpm?: object } | undefined)?.bpm },
+    },
     drill: mergeDrill(s.drill),
   };
 }

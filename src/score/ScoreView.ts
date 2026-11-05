@@ -11,8 +11,8 @@
 
 import { CursorType, OpenSheetMusicDisplay, type GraphicalNote } from 'opensheetmusicdisplay';
 import { planHalfTurn, type SystemBox } from './halfTurn';
-import { extractTimeline } from './timeline';
-import type { TimelinePosition } from './types';
+import { extractMeasures, extractTimeline } from './timeline';
+import type { MeasureInfo, TimelinePosition } from './types';
 
 export type PageTurnMode = 'full' | 'half';
 export type Orientation = 'portrait' | 'landscape';
@@ -46,6 +46,7 @@ const PAPER = '#fffdf8';
 export class ScoreView {
   readonly osmd: OpenSheetMusicDisplay;
   timeline: TimelinePosition[] = [];
+  measures: MeasureInfo[] = [];
 
   readonly #viewport: HTMLElement;
   readonly #sheet: HTMLElement;
@@ -104,6 +105,7 @@ export class ScoreView {
     try {
       await this.osmd.load(content, title);
       this.timeline = extractTimeline(this.osmd.Sheet);
+      this.measures = extractMeasures(this.osmd.Sheet);
       this.#loaded = true;
       this.#position = 0;
       this.#manualPage = null;

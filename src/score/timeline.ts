@@ -3,7 +3,7 @@
 // a posição k da linha do tempo é a posição do cursor após k chamadas a next().
 
 import type { MusicSheet } from 'opensheetmusicdisplay';
-import type { Hand, TimelineNote, TimelinePosition } from './types';
+import type { Hand, MeasureInfo, TimelineNote, TimelinePosition } from './types';
 
 // No OSMD, halfTone 48 = Dó4; em MIDI, Dó4 = 60.
 const HALFTONE_TO_MIDI = 12;
@@ -46,6 +46,7 @@ export function extractTimeline(sheet: MusicSheet): TimelinePosition[] {
           staff,
           tieContinuation: tie !== undefined && tie.StartNote !== note,
           grace: note.IsGraceNote || ve.IsGrace,
+          duration: tie && tie.StartNote === note ? tie.Duration.RealValue : note.Length.RealValue,
         });
       }
     }
@@ -53,9 +54,23 @@ export function extractTimeline(sheet: MusicSheet): TimelinePosition[] {
       index: timeline.length,
       measure: iterator.CurrentMeasureIndex,
       time: iterator.CurrentSourceTimestamp.RealValue,
+      perfTime: iterator.CurrentEnrolledTimestamp.RealValue,
       notes,
     });
     iterator.moveToNextVisibleVoiceEntry(false);
   }
   return timeline;
+}
+
+/** Compassos com fórmula e andamento (o andamento só se a partitura indicar algum). */
+export function extractMeasures(sheet: MusicSheet): MeasureInfo[] {
+  const hasTempo = sheet.HasBPMInfo;
+  return sheet.SourceMeasures.map((m, index) => ({
+    index,
+    start: m.AbsoluteTimestamp.RealValue,
+    duration: m.Duration.RealValue,
+    beats: m.ActiveTimeSignature?.Numerator ?? 4,
+    beatType: m.ActiveTimeSignature?.Denominator ?? 4,
+    tempo: hasTempo && m.TempoInBPM > 0 ? m.TempoInBPM : null,
+  }));
 }

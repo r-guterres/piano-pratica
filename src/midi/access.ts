@@ -74,6 +74,24 @@ export class MidiConnection {
     return Array.from(this.#access.inputs.values(), deviceInfo);
   }
 
+  get outputs(): MidiDeviceInfo[] {
+    return Array.from(this.#access.outputs.values(), deviceInfo);
+  }
+
+  /**
+   * Saída para tocar no teclado: a que tem o mesmo nome de uma entrada em uso
+   * (o Casio aparece como entrada e saída), senão a primeira conectada.
+   */
+  output(): MIDIOutput | null {
+    const outs = [...this.#access.outputs.values()].filter((o) => o.state === 'connected');
+    const names = this.inputs
+      .filter(
+        (i) => i.state === 'connected' && (this.#selectedId === null || i.id === this.#selectedId),
+      )
+      .map((i) => i.name);
+    return outs.find((o) => names.includes(o.name ?? '')) ?? outs[0] ?? null;
+  }
+
   /** Restringe a escuta a um dispositivo; `null` = todos. */
   select(id: string | null): void {
     this.#selectedId = id;

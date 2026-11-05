@@ -37,4 +37,13 @@ describe('mergeSettings', () => {
     expect(s.drill.range.treble).toEqual(DEFAULT_SETTINGS.drill.range.treble);
     expect(s.drill.minutes).toBe(DEFAULT_SETTINGS.drill.minutes);
   });
+
+  it('fills the playback settings and keeps the per-score tempos', () => {
+    const s = mergeSettings({ playback: { notesOutput: 'speaker', bpm: { minueto: 72 } } });
+    expect(s.playback).toEqual({
+      ...DEFAULT_SETTINGS.playback,
+      notesOutput: 'speaker',
+      bpm: { minueto: 72 },
+    });
+  });
 });

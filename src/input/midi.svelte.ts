@@ -7,6 +7,7 @@ import {
   MidiConnection,
   type MidiDeviceInfo,
 } from '../midi/access';
+import { EchoFilter } from './echo';
 import { inputHub } from './hub';
 
 export type MidiStatus = 'idle' | 'connecting' | 'ready' | 'error' | 'unsupported';
@@ -15,7 +16,14 @@ export const midi: {
   status: MidiStatus;
   error: string;
   devices: MidiDeviceInfo[];
-} = $state({ status: 'idle', error: '', devices: [] });
+  /** Saídas MIDI (para o app tocar no teclado). */
+  outputs: MidiDeviceInfo[];
+  /** Notas recebidas descartadas como eco do que o app tocou (diagnóstico). */
+  echoes: number;
+} = $state({ status: 'idle', error: '', devices: [], outputs: [], echoes: 0 });
+
+/** Notas que o app manda para o teclado; o que voltar logo depois é eco. */
+export const echoFilter = new EchoFilter();
 
 let connection: MidiConnection | null = null;
 let pending: Promise<MidiConnection | null> | null = null;
@@ -49,8 +57,21 @@ async function open(): Promise<MidiConnection | null> {
   }
   midi.status = 'ready';
   midi.devices = connection.inputs;
-  connection.onDevicesChange((list) => (midi.devices = list));
+  midi.outputs = connection.outputs;
+  connection.onDevicesChange((list) => {
+    midi.devices = list;
+    midi.outputs = connection?.outputs ?? [];
+  });
   connection.onMessage((msg) => {
+    if (msg.kind === 'note') {
+      const e = msg.event;
+      const echo =
+        e.type === 'on' ? echoFilter.isEchoOn(e.pitch, e.t) : echoFilter.isEchoOff(e.pitch);
+      if (echo) {
+        if (e.type === 'on') midi.echoes++;
+        return;
+      }
+    }
     if (msg.kind === 'note' || msg.kind === 'pedal') inputHub.emit(msg.event, 'midi');
   });
   return connection;
@@ -69,4 +90,9 @@ export async function autoConnectMidi(): Promise<void> {
 
 export function connectedDeviceNames(): string[] {
   return midi.devices.filter((d) => d.state === 'connected').map((d) => d.name);
+}
+
+/** Saída MIDI para o app tocar no teclado (null se não há). */
+export function midiOutput(): MIDIOutput | null {
+  return connection?.output() ?? null;
 }
