@@ -6,6 +6,7 @@
   import { autoConnectMidi, connectedDeviceNames, connectMidi, midi } from './input/midi.svelte';
   import Library, { type ScoreSource } from './ui/Library.svelte';
   import MidiMonitor from './ui/MidiMonitor.svelte';
+  import ProgressScreen from './ui/ProgressScreen.svelte';
   import SettingsScreen from './ui/SettingsScreen.svelte';
   import { settings } from './ui/settings.svelte';
 
@@ -13,6 +14,7 @@
   const screens = [
     { id: 'library', label: 'Partituras' },
     { id: 'drill', label: 'Treino de leitura' },
+    { id: 'progress', label: 'Progresso' },
     { id: 'monitor', label: 'Monitor MIDI' },
     { id: 'settings', label: 'Configurações' },
   ] as const;
@@ -82,6 +84,8 @@
       {:catch err}
         <p class="loading">Não consegui carregar o treino: {String(err)}</p>
       {/await}
+    {:else if screen === 'progress'}
+      <ProgressScreen />
     {:else if screen === 'monitor'}
       <MidiMonitor />
     {:else}

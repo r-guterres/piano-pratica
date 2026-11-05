@@ -14,6 +14,10 @@
   --key-black: #222222;
   --key-border: #9a958b;
   --marked: #e0a100;
+  /* gráficos (paleta validada: azul = partituras, laranja = treino) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --grid: #ece9e3;
   color-scheme: light;
 }
 
@@ -34,6 +38,9 @@
     --key-black: #0d0d0d;
     --key-border: #55514b;
     --marked: #f2c14e;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --grid: #33302c;
     color-scheme: dark;
   }
 }

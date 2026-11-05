@@ -1,9 +1,13 @@
 <script module lang="ts">
   import { Prioritizer } from '../drills/priority';
+  import { appHistory } from '../storage/history';
 
-  // Lembra das notas difíceis entre rodadas enquanto o app estiver aberto
-  // (o histórico persistente vem no M4).
+  // Lembra das notas difíceis entre rodadas; as estatísticas ficam no IndexedDB.
   const prioritizer = new Prioritizer();
+  const statsLoaded = appHistory()
+    .drillStats()
+    .then((saved) => prioritizer.restore(saved))
+    .catch((err: unknown) => console.warn('Não consegui ler as estatísticas do treino:', err));
 </script>
 
 <script lang="ts">
@@ -17,10 +21,12 @@
     type Clef,
     type ClefSelection,
     type DrillItem,
+    type PoolConfig,
   } from '../drills/notes';
   import { ReadingDrill, type DrillSummary } from '../drills/readingDrill';
   import { heldPitches } from '../input/held.svelte';
   import { inputHub } from '../input/hub';
+  import { newId } from '../storage/history';
   import DrillSummaryView from './DrillSummary.svelte';
   import { drawStaff, fontsReady } from './drillStaff';
   import PianoKeyboard from './PianoKeyboard.svelte';
@@ -90,10 +96,39 @@
     saveSettings();
   }
 
+  // ---- histórico ----
+  let roundId = '';
+  let roundStartedAt = 0;
+  let roundConfig: PoolConfig = settings.drill;
+
+  /** Grava a rodada (de novo pelo mesmo id, se já gravada) e as estatísticas do Prioritizer. */
+  function persistRound() {
+    if (!drill) return;
+    const s = drill.summary();
+    if (s.answered === 0 && s.wrongNotes === 0) return;
+    const end = phase === 'running' ? performance.now() : endedAt;
+    const history = appHistory();
+    Promise.all([
+      history.saveDrillRound({
+        id: roundId,
+        startedAt: roundStartedAt,
+        durationMs: Math.round(end - startedAt),
+        config: roundConfig,
+        summary: s,
+      }),
+      history.saveDrillStats(prioritizer.snapshot()),
+    ]).catch((err: unknown) => console.warn('Não consegui salvar a rodada:', err));
+  }
+
   async function start() {
     saveSettings();
     pool = buildPool(settings.drill);
     if (!pool.length) return;
+    await statsLoaded;
+    roundId = newId();
+    roundStartedAt = Date.now();
+    // cópia simples (o IndexedDB não aceita os proxies do $state)
+    roundConfig = $state.snapshot(settings.drill);
     shownClefs = settings.drill.clefs;
     shownKey = settings.drill.keySignature;
     drill = new ReadingDrill(pool, { revealAfter: settings.drill.revealAfter, prioritizer });
@@ -137,6 +172,7 @@
     endedAt = performance.now();
     summary = drill.summary();
     phase = 'summary';
+    persistRound();
   }
 
   const unsubscribe = inputHub.subscribe((event) => {
@@ -162,7 +198,14 @@
     tick++;
   });
 
+  // saiu da tela no meio da rodada (ou o Android pôs o app em segundo plano)
+  const onHidden = () =>
+    document.visibilityState === 'hidden' && phase === 'running' && persistRound();
+  document.addEventListener('visibilitychange', onHidden);
+
   onDestroy(() => {
+    if (phase === 'running') persistRound();
+    document.removeEventListener('visibilitychange', onHidden);
     unsubscribe();
     clearInterval(clock);
     clearTimeout(advanceTimer);

@@ -13,6 +13,7 @@
   } from '../practice/waitMode';
   import { ScoreView, type ScoreViewState } from '../score/ScoreView';
   import { buildSteps } from '../score/steps';
+  import { appHistory, newId, type ScoreSessionRecord } from '../storage/history';
   import type { HandSelection, TimelinePosition } from '../score/types';
   import type { ScoreSource } from './Library.svelte';
   import PianoKeyboard from './PianoKeyboard.svelte';
@@ -58,9 +59,32 @@
     settings.input.virtualRange === 'full' ? { low: 36, high: 96 } : { low: 48, high: 84 },
   );
 
+  // ---- histórico (IndexedDB) ----
+  let record: Omit<ScoreSessionRecord, 'finished' | 'summary'> | null = null;
+
+  /** Grava a sessão atual (de novo pelo mesmo id, se já gravada); sem nenhuma nota tocada, não grava. */
+  function persistSession() {
+    if (!mode || !record) return;
+    const summary = mode.summary();
+    if (summary.completed === 0 && summary.wrongNotes === 0) return;
+    appHistory()
+      .saveScoreSession({ ...record, finished: mode.finished, summary })
+      .catch((err: unknown) => console.warn('Não consegui salvar a sessão:', err));
+  }
+
   function startSession() {
     if (!view) return;
+    persistSession();
     mode = new WaitMode(steps, { loop });
+    record = {
+      id: newId(),
+      scoreId: source.id,
+      title,
+      startedAt: Date.now(),
+      hands: settings.score.hands,
+      loop: loop ? { ...loop } : null,
+      stepCount: mode.range.last - mode.range.first + 1,
+    };
     view.clearColors();
     summary = null;
     lastWrong = null;
@@ -94,6 +118,7 @@
         }
         case 'finished':
           summary = ev.summary;
+          persistSession();
           break;
       }
     }
@@ -124,7 +149,13 @@
 
   const unsubscribe = inputHub.subscribe((event) => handleInput(event));
 
+  // o Android pode encerrar o app em segundo plano sem aviso: grava ao sair da tela
+  const onHidden = () => document.visibilityState === 'hidden' && persistSession();
+  document.addEventListener('visibilitychange', onHidden);
+
   onDestroy(() => {
+    persistSession();
+    document.removeEventListener('visibilitychange', onHidden);
     unsubscribe();
     view?.destroy();
   });
