@@ -4,9 +4,11 @@
 // Os registros são objetos simples (structured clone): não passar proxies do
 // Svelte ($state) direto; usar $state.snapshot antes.
 
+import type { InputEvent } from '../core/events';
 import type { ItemStats } from '../drills/priority';
 import type { PoolConfig } from '../drills/notes';
 import type { DrillSummary } from '../drills/readingDrill';
+import type { PedalVerdict } from '../practice/pedal';
 import type { RhythmSummary } from '../practice/rhythm';
 import type { LoopRange, WaitModeSummary } from '../practice/waitMode';
 import type { HandSelection } from '../score/types';
@@ -57,6 +59,31 @@ export interface StoredFile {
 }
 
 export type StoredFileInfo = Omit<StoredFile, 'data'>;
+
+export interface PedalSessionRecord {
+  id: string;
+  startedAt: number;
+  durationMs: number;
+  /** Progressão sugerida (ex.: "C F G C"). */
+  progression: string;
+  /** Trocas de acorde avaliadas e quantas certas. */
+  changes: number;
+  ok: number;
+  verdicts: Partial<Record<PedalVerdict, number>>;
+}
+
+export interface RecordingRecord {
+  id: string;
+  createdAt: number;
+  title: string;
+  /** Partitura aberta durante a gravação (null = fora do leitor). */
+  scoreId: string | null;
+  durationMs: number;
+  /** Teclas e pedal, com t em ms desde o início da gravação. */
+  events: InputEvent[];
+}
+
+export type RecordingInfo = Omit<RecordingRecord, 'events'> & { notes: number };
 
 export type DrillStats = Record<string, ItemStats>;
 
@@ -124,15 +151,59 @@ export class History {
     await run(await this.#db, 'files', 'readwrite', (s) => s.delete(id));
   }
 
-  /** Tudo o que vai para a exportação em JSON (arquivos sem o conteúdo). */
+  savePedalSession(r: PedalSessionRecord): Promise<void> {
+    return this.#put('pedalSessions', r);
+  }
+
+  pedalSessions(): Promise<PedalSessionRecord[]> {
+    return this.#all('pedalSessions');
+  }
+
+  saveRecording(r: RecordingRecord): Promise<void> {
+    return this.#put('recordings', r);
+  }
+
+  async recording(id: string): Promise<RecordingRecord | null> {
+    const v = await run(await this.#db, 'recordings', 'readonly', (s) => s.get(id));
+    return (v as RecordingRecord | undefined) ?? null;
+  }
+
+  /** Gravações sem os eventos, da mais antiga à mais nova. */
+  async recordings(): Promise<RecordingInfo[]> {
+    const all = (await run(await this.#db, 'recordings', 'readonly', (s) =>
+      s.getAll(),
+    )) as RecordingRecord[];
+    return all
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map(({ events, ...info }) => ({
+        ...info,
+        notes: events.filter((e) => e.type === 'on').length,
+      }));
+  }
+
+  async deleteRecording(id: string): Promise<void> {
+    await run(await this.#db, 'recordings', 'readwrite', (s) => s.delete(id));
+  }
+
+  /** Tudo o que vai para a exportação em JSON (arquivos e gravações sem o conteúdo). */
   async exportData(): Promise<HistoryData> {
-    const [scoreSessions, drillRounds, drillStats, files] = await Promise.all([
-      this.scoreSessions(),
-      this.drillRounds(),
-      this.drillStats(),
-      this.files(),
-    ]);
-    return { scoreSessions, drillRounds, drillStats: drillStats ?? {}, files };
+    const [scoreSessions, drillRounds, drillStats, files, pedalSessions, recordings] =
+      await Promise.all([
+        this.scoreSessions(),
+        this.drillRounds(),
+        this.drillStats(),
+        this.files(),
+        this.pedalSessions(),
+        this.recordings(),
+      ]);
+    return {
+      scoreSessions,
+      drillRounds,
+      drillStats: drillStats ?? {},
+      files,
+      pedalSessions,
+      recordings,
+    };
   }
 }
 
@@ -141,6 +212,8 @@ export interface HistoryData {
   drillRounds: DrillRoundRecord[];
   drillStats: DrillStats;
   files: StoredFileInfo[];
+  pedalSessions: PedalSessionRecord[];
+  recordings: RecordingInfo[];
 }
 
 /** Id único para um registro (crypto.randomUUID exige HTTPS; `dev:lan` é HTTP). */

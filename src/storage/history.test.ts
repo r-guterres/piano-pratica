@@ -77,6 +77,57 @@ describe('History', () => {
     expect(await second.scoreSessions()).toHaveLength(1);
   });
 
+  it('upgrades a version 1 database without losing data', async () => {
+    const factory = new IDBFactory();
+    await new Promise<void>((resolve, reject) => {
+      const req = factory.open('piano-pratica', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        db.createObjectStore('scoreSessions', { keyPath: 'id' }).put(session('old', 100));
+        for (const s of ['drillRounds', 'files']) db.createObjectStore(s, { keyPath: 'id' });
+        db.createObjectStore('kv');
+      };
+      req.onsuccess = () => {
+        req.result.close();
+        resolve();
+      };
+      req.onerror = () => reject(req.error);
+    });
+    const h = new History(openDb(factory));
+    expect((await h.scoreSessions()).map((s) => s.id)).toEqual(['old']);
+    expect(await h.pedalSessions()).toEqual([]);
+    expect(await h.recordings()).toEqual([]);
+  });
+
+  it('keeps recordings and lists them without their events', async () => {
+    const h = fresh();
+    await h.saveRecording({
+      id: 'r1',
+      createdAt: 5,
+      title: 'Minueto',
+      scoreId: 'minueto-sol',
+      durationMs: 2000,
+      events: [
+        { type: 'on', pitch: 60, velocity: 80, t: 0 },
+        { type: 'pedal', value: 127, down: true, t: 10 },
+        { type: 'off', pitch: 60, velocity: 0, t: 500 },
+      ],
+    });
+    expect(await h.recordings()).toEqual([
+      {
+        id: 'r1',
+        createdAt: 5,
+        title: 'Minueto',
+        scoreId: 'minueto-sol',
+        durationMs: 2000,
+        notes: 1,
+      },
+    ]);
+    expect((await h.recording('r1'))?.events).toHaveLength(3);
+    await h.deleteRecording('r1');
+    expect(await h.recordings()).toEqual([]);
+  });
+
   it('exports everything in one object', async () => {
     const h = fresh();
     await h.saveScoreSession(session('a', 100));

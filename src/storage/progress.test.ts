@@ -75,6 +75,8 @@ const data = (over: Partial<HistoryData> = {}): HistoryData => ({
   drillRounds: [],
   drillStats: {},
   files: [],
+  pedalSessions: [],
+  recordings: [],
   ...over,
 });
 

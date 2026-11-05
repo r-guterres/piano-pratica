@@ -10,12 +10,13 @@
   import ProgressScreen from './ui/ProgressScreen.svelte';
   import { applyUpdate, initPwa, pwa } from './ui/pwa.svelte';
   import SettingsScreen from './ui/SettingsScreen.svelte';
+  import TrainingScreen from './ui/TrainingScreen.svelte';
   import { settings } from './ui/settings.svelte';
 
   // Navegação simples por estado (sem roteador).
   const screens = [
     { id: 'library', label: 'Partituras' },
-    { id: 'drill', label: 'Treino de leitura' },
+    { id: 'drill', label: 'Treinos' },
     { id: 'metronome', label: 'Metrônomo' },
     { id: 'progress', label: 'Progresso' },
     { id: 'monitor', label: 'Monitor MIDI' },
@@ -27,8 +28,6 @@
 
   // O leitor (com o OSMD, ~1 MB) só é baixado quando uma partitura é aberta.
   const loadReader = () => import('./ui/ScoreReader.svelte');
-  // Idem para o treino de leitura (com o VexFlow e a fonte Bravura).
-  const loadDrill = () => import('./ui/DrillScreen.svelte');
 
   const mapper = new ComputerKeyboardMapper();
   $effect(() => {
@@ -87,13 +86,7 @@
     {#if screen === 'library'}
       <Library onopen={(s) => (openScore = s)} />
     {:else if screen === 'drill'}
-      {#await loadDrill()}
-        <p class="loading">Carregando treino…</p>
-      {:then { default: DrillScreen }}
-        <DrillScreen />
-      {:catch err}
-        <p class="loading">Não consegui carregar o treino: {String(err)}</p>
-      {/await}
+      <TrainingScreen />
     {:else if screen === 'metronome'}
       <MetronomeScreen />
     {:else if screen === 'progress'}
