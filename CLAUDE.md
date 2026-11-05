@@ -10,8 +10,8 @@ profissional: explique as decisões técnicas em poucas linhas.
 - **M0 (fundação + Monitor MIDI):** implementado e publicado em https://r-guterres.github.io/piano-pratica/ (repo github.com/r-guterres/piano-pratica); **aceito no tablet em 2026-11-03** (Casio reconhecido, notas, velocity e pedal ok).
 - **M1 (partitura + entrada + passos):** implementado; meia-virada corrigida (68f924d); **aceito no tablet** (meia-virada reconferida em 2026-11-04).
 - **M2 (modo espera):** implementado; **aceito no tablet em 2026-11-03** (após a correção da outra mão chegando atrasada, 9fb630d).
-- **M3 (treino de leitura):** implementado; testado no tablet em 2026-11-04, que revelou a lentidão pesando mais que o erro (corrigido em 0a75ac6). Falta reconferir a priorização.
-- **M4 (persistência e acabamento):** implementado (IndexedDB, tela de progresso, PWA offline com aviso de versão nova, exportar JSON); aguardando o teste de aceite no tablet.
+- **M3 (treino de leitura):** implementado; **aceito no tablet em 2026-11-05** (após a correção da lentidão pesando mais que o erro, 0a75ac6).
+- **M4 (persistência e acabamento):** implementado (IndexedDB, tela de progresso, PWA offline com aviso de versão nova, exportar JSON); **aceito no tablet em 2026-11-05** (instalado, offline, histórico persiste).
 - Todos os marcos do plano inicial (M0–M4) estão implementados.
 
 ## Decisões tomadas
