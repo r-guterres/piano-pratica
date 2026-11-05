@@ -8,6 +8,8 @@ export interface Sink {
   click(at: number, accent: boolean): void;
   noteOn(at: number, pitch: number, velocity: number): void;
   noteOff(at: number, pitch: number): void;
+  /** Pedal de sustentação. */
+  pedal(at: number, down: boolean): void;
   /** Silencia tudo agora, inclusive o que estava agendado. */
   stop(): void;
 }
@@ -56,6 +58,9 @@ export class SpeakerSink implements Sink {
   /** Notas soando ou agendadas, por altura (FIFO). */
   readonly #voices = new Map<number, Voice[]>();
   readonly #all = new Set<Voice>();
+  /** Pedal abaixado: as notas soltas continuam soando até ele subir. */
+  #sustain = false;
+  readonly #sustained: Voice[] = [];
 
   /** `latencyMs`: valor calibrado pelo usuário; null = estimativa do navegador. */
   constructor(latencyMs: number | null) {
@@ -114,10 +119,23 @@ export class SpeakerSink implements Sink {
   noteOff(at: number, pitch: number): void {
     const v = this.#voices.get(pitch)?.shift();
     if (!v) return;
+    if (this.#sustain) this.#sustained.push(v);
+    else this.#release(v, at);
+  }
+
+  #release(v: Voice, at: number): void {
     const t = this.#time(at);
     v.gain.gain.cancelScheduledValues(t);
     v.gain.gain.setTargetAtTime(0, t, 0.05);
     v.osc.stop(t + 0.4);
+  }
+
+  // Os eventos chegam em ordem de tempo, então o estado do pedal no momento
+  // em que cada nota é solta é o do último evento de pedal recebido.
+  pedal(at: number, down: boolean): void {
+    this.#sustain = down;
+    if (down) return;
+    for (const v of this.#sustained.splice(0)) this.#release(v, at);
   }
 
   stop(): void {
@@ -132,6 +150,8 @@ export class SpeakerSink implements Sink {
       }
     }
     this.#voices.clear();
+    this.#sustained.length = 0;
+    this.#sustain = false;
   }
 }
 
@@ -183,13 +203,18 @@ export class MidiSink implements Sink {
     this.#pending.delete(pitch);
   }
 
+  pedal(at: number, down: boolean): void {
+    this.#send([0xb0 | NOTE_CH, 64, down ? 127 : 0], at);
+  }
+
   stop(): void {
     // note-ons já agendados ainda vão sair: solta cada um logo depois dele
     const now = performance.now();
     for (const [pitch, at] of this.#pending)
       this.#send([0x80 | NOTE_CH, pitch, 0], Math.max(now, at + 1));
     this.#pending.clear();
-    // e, por garantia, "all notes off" depois do que ainda estava na fila
+    // e, por garantia, pedal solto e "all notes off" depois do que ainda estava na fila
+    this.#send([0xb0 | NOTE_CH, 64, 0], now + 300);
     for (const ch of [NOTE_CH, DRUM_CH]) this.#send([0xb0 | ch, 123, 0], now + 300);
   }
 }

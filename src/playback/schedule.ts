@@ -6,6 +6,7 @@
 // minuto, então uma semibreve dura 4·60000/bpm ms. O andamento escolhido
 // substitui o primeiro andamento escrito, e os demais mudam na mesma proporção.
 
+import type { InputEvent } from '../core/events';
 import type { HandSelection, MeasureInfo, TimelinePosition } from '../score/types';
 
 export type PlaybackEvent =
@@ -13,6 +14,7 @@ export type PlaybackEvent =
   | { t: number; kind: 'click'; accent: boolean; beat: number }
   | { t: number; kind: 'on'; pitch: number; velocity: number }
   | { t: number; kind: 'off'; pitch: number }
+  | { t: number; kind: 'pedal'; down: boolean }
   | { t: number; kind: 'cursor'; position: number };
 
 export type PlaySelection = 'none' | HandSelection;
@@ -93,7 +95,7 @@ function clicksIn(span: Span, toMs: (x: number) => number): PlaybackEvent[] {
   return out;
 }
 
-const ORDER = { off: 0, click: 1, on: 2, cursor: 3 } as const;
+const ORDER = { off: 0, pedal: 1, click: 2, on: 3, cursor: 4 } as const;
 const byTime = (a: PlaybackEvent, b: PlaybackEvent) => a.t - b.t || ORDER[a.kind] - ORDER[b.kind];
 
 export function buildSchedule(
@@ -222,6 +224,20 @@ function noteEvents(
     });
   }
   return out;
+}
+
+/** Reprodução de uma gravação (teclas e pedal, t em ms desde o início). */
+export function recordingSchedule(events: readonly InputEvent[], durationMs: number): Schedule {
+  const body: PlaybackEvent[] = events.map((e) =>
+    e.type === 'pedal'
+      ? { t: e.t, kind: 'pedal', down: e.down }
+      : e.type === 'on'
+        ? { t: e.t, kind: 'on', pitch: e.pitch, velocity: e.velocity }
+        : { t: e.t, kind: 'off', pitch: e.pitch },
+  );
+  body.sort(byTime);
+  const end = Math.max(durationMs, body.at(-1)?.t ?? 0);
+  return { countIn: [], countInMs: 0, body, bodyMs: end, expected: [] };
 }
 
 /**

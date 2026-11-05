@@ -4,6 +4,7 @@
   import { pitchName } from '../core/pitch';
   import { heldPitches } from '../input/held.svelte';
   import { inputHub } from '../input/hub';
+  import { Recorder } from '../input/recorder';
   import { midi } from '../input/midi.svelte';
   import { RhythmJudge, type RhythmEvent } from '../practice/rhythm';
   import { TempoLadder } from '../practice/tempoLadder';
@@ -168,18 +169,65 @@
       .finally(() => (loading = false));
   });
 
-  const unsubscribe = inputHub.subscribe((event) => handleInput(event));
+  const unsubscribe = inputHub.subscribe((event) => {
+    recorder?.add(event);
+    handleInput(event);
+  });
+
+  // ---- gravação (teclas e pedal; ouvir e exportar em Progresso → Gravações) ----
+  let recorder = $state.raw<Recorder | null>(null);
+  let recordStart = 0;
+  let recordNote = $state('');
+  let recordClock = $state(0);
+  let recordTimer: ReturnType<typeof setInterval> | undefined;
+
+  function startRecording() {
+    recordStart = Date.now();
+    recorder = new Recorder(performance.now());
+    recordNote = '';
+    recordClock = 0;
+    recordTimer = setInterval(() => (recordClock = Date.now() - recordStart), 500);
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    clearInterval(recordTimer);
+    const { events, durationMs } = recorder.stop(performance.now());
+    recorder = null;
+    if (!events.length) {
+      recordNote = 'Nada foi tocado: gravação descartada.';
+      return;
+    }
+    appHistory()
+      .saveRecording({
+        id: newId(),
+        createdAt: recordStart,
+        title,
+        scoreId: source.id,
+        durationMs,
+        events,
+      })
+      .then(() => (recordNote = 'Gravação salva: ouça em Progresso → Gravações.'))
+      .catch((err: unknown) => (recordNote = `Não consegui salvar a gravação: ${String(err)}`));
+  }
+
+  const clockText = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
 
   // o Android pode encerrar o app em segundo plano sem aviso: grava ao sair da tela
   // (e para o som: em segundo plano o relógio do navegador fica impreciso)
   const onHidden = () => {
     if (document.visibilityState !== 'hidden') return;
+    stopRecording();
     stopPlayback();
     persistSession();
   };
   document.addEventListener('visibilitychange', onHidden);
 
   onDestroy(() => {
+    stopRecording();
     stopPlayback();
     persistSession();
     document.removeEventListener('visibilitychange', onHidden);
@@ -739,6 +787,15 @@
         </label>
       {/if}
     {/if}
+    <button
+      class="rec"
+      class:on={recorder !== null}
+      onclick={() => (recorder ? stopRecording() : startRecording())}
+      title="Grava o que você toca (teclas e pedal)"
+    >
+      {recorder ? `■ ${clockText(recordClock)}` : '● Gravar'}
+    </button>
+    {#if recordNote}<span class="muted">{recordNote}</span>{/if}
     {#if playWarning}<span class="warn">{playWarning}</span>{/if}
   </div>
 
@@ -1008,6 +1065,12 @@
     border: 1px solid var(--border);
     background: var(--surface-2);
     color: var(--text);
+  }
+  .rec.on {
+    background: var(--bad);
+    border-color: var(--bad);
+    color: #fff;
+    font-variant-numeric: tabular-nums;
   }
   .expected.hidden {
     display: none;

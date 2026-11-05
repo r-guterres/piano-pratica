@@ -5,6 +5,7 @@ import {
   buildSchedule,
   metronomeSchedule,
   REARTICULATE_MS,
+  recordingSchedule,
   type PlaybackEvent,
   type ScheduleOptions,
 } from './schedule';
@@ -208,6 +209,25 @@ describe('buildSchedule', () => {
     expect(s.bodyMs).toBe(4000);
     expect(only(s.body, 'cursor')).toEqual([{ t: 0, kind: 'cursor', position: 3 }]);
     expect(only(s.body, 'on').map((e) => e.kind === 'on' && e.pitch)).toEqual([65]);
+  });
+});
+
+describe('recordingSchedule', () => {
+  it('replays keys and pedal in time order', () => {
+    const s = recordingSchedule(
+      [
+        { type: 'pedal', value: 127, down: true, t: 100 },
+        { type: 'on', pitch: 60, velocity: 90, t: 0 },
+        { type: 'off', pitch: 60, velocity: 0, t: 400 },
+      ],
+      1000,
+    );
+    expect(s.body).toEqual([
+      { t: 0, kind: 'on', pitch: 60, velocity: 90 },
+      { t: 100, kind: 'pedal', down: true },
+      { t: 400, kind: 'off', pitch: 60 },
+    ]);
+    expect(s.bodyMs).toBe(1000);
   });
 });
 

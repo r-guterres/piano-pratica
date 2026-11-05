@@ -16,12 +16,14 @@ describe('MidiSink', () => {
     sink.noteOn(1000, 60, 70);
     sink.noteOff(1500, 60);
     sink.click(2000, true);
+    sink.pedal(2100, true);
     expect(sent).toEqual([
       [[0xc1, 0], undefined],
       [[0x91, 60, 70], 1000],
       [[0x81, 60, 0], 1500],
       [[0x99, 76, 120], 2000],
       [[0x89, 76, 0], 2060],
+      [[0xb1, 64, 127], 2100],
     ]);
     expect(echoes).toEqual([60]);
   });
@@ -36,6 +38,7 @@ describe('MidiSink', () => {
     expect(sent[0]).toEqual([[0x81, 64, 0], later + 1]);
     // "all notes off" nos canais das notas e do metrônomo
     expect(sent.slice(1).map(([d]) => d)).toEqual([
+      [0xb1, 64, 0],
       [0xb1, 123, 0],
       [0xb9, 123, 0],
     ]);

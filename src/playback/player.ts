@@ -96,6 +96,9 @@ export class Player {
       case 'off':
         notes?.noteOff(heard - notes.latencyMs, e.pitch);
         break;
+      case 'pedal':
+        notes?.pedal(heard - notes.latencyMs, e.down);
+        break;
       case 'cursor':
       case 'lap':
         this.#visual.push({ at: heard, e });

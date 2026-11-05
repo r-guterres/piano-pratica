@@ -10,6 +10,7 @@
     toExportJson,
   } from '../storage/progress';
   import DailyBars from './charts/DailyBars.svelte';
+  import RecordingsCard from './RecordingsCard.svelte';
   import TrendLine from './charts/TrendLine.svelte';
   import { settings } from './settings.svelte';
 
@@ -241,6 +242,7 @@
       </div>
     {/if}
   </section>
+  <RecordingsCard />
 {/if}
 
 <style>
