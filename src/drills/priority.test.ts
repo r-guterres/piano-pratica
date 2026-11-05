@@ -34,12 +34,31 @@ describe('Prioritizer', () => {
 
   it('adds weight to slow notes relative to the median', () => {
     const p = new Prioritizer();
-    p.record('a', true, 1000);
-    p.record('b', true, 1000);
-    p.record('slow', true, 3000);
+    for (let i = 0; i < 20; i++) for (const id of ['a', 'b', 'slow']) p.record(id, true, 1000);
+    for (let i = 0; i < 20; i++) p.record('slow', true, 3000);
     expect(p.medianMs()).toBe(1000);
-    // mesma taxa de erro; lentidão 3000/1000 − 1 = 2 → +0,5·2
-    expect(p.weight('slow') - p.weight('a')).toBeCloseTo(1);
+    // mesma taxa de erro; com muitas medições a lentidão chega perto de 2 → p·(1 + 0,5·2)
+    expect(p.weight('slow') - 0.05).toBeGreaterThan(1.9 * (p.weight('a') - 0.05));
+  });
+
+  // Bug do tablet (M3): Fá2, sempre certa mas lenta, ficou à frente de Mi3 e Ré3,
+  // erradas todas as vezes.
+  it('never ranks a slow but correct note above notes that are always wrong', () => {
+    const p = new Prioritizer();
+    for (let i = 0; i < 3; i++) for (const id of ['c3', 'f3', 'g3', 'a3']) p.record(id, true, 1500);
+    for (let i = 0; i < 4; i++) p.record('e3', false, null);
+    for (let i = 0; i < 3; i++) p.record('f2', true, 6000);
+    expect(p.weight('e3')).toBeGreaterThan(p.weight('f2'));
+    // e a lenta ainda aparece mais que as normais
+    expect(p.weight('f2')).toBeGreaterThan(1.5 * p.weight('c3'));
+  });
+
+  it('does not let a single hesitation define a note as slow', () => {
+    const p = new Prioritizer();
+    for (const id of ['a', 'b', 'c']) p.record(id, true, 1000);
+    p.record('once', true, 3000);
+    // uma medição: (1·3000 + 2·1000)/3 ≈ 1667 → lentidão ≈ 0,67, não 2
+    expect(p.slowness('once')).toBeCloseTo(2 / 3);
   });
 
   it('smooths the reaction time', () => {
