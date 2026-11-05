@@ -11,14 +11,24 @@
     type LoopRange,
     type WaitModeSummary,
   } from '../practice/waitMode';
+  import { makeOutputs } from '../playback/outputs';
+  import { Player, type VisualEvent } from '../playback/player';
+  import { loopPositions, measureStart } from '../playback/range';
+  import {
+    beatGrid,
+    buildSchedule,
+    metronomeSchedule,
+    type PlaySelection,
+  } from '../playback/schedule';
+  import { audioContext } from '../playback/sinks';
   import { ScoreView, type ScoreViewState } from '../score/ScoreView';
-  import { buildSteps } from '../score/steps';
+  import { buildSteps, stepAtOrAfter } from '../score/steps';
   import { appHistory, newId, type ScoreSessionRecord } from '../storage/history';
-  import type { HandSelection, TimelinePosition } from '../score/types';
+  import type { HandSelection, MeasureInfo, TimelinePosition } from '../score/types';
   import type { ScoreSource } from './Library.svelte';
   import PianoKeyboard from './PianoKeyboard.svelte';
   import SessionSummary from './SessionSummary.svelte';
-  import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN } from './settings.svelte';
+  import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN, type ListenMode } from './settings.svelte';
 
   let { source, onclose }: { source: ScoreSource; onclose: () => void } = $props();
 
@@ -93,6 +103,8 @@
   }
 
   function handleInput(event: InputEvent) {
+    // no modo acompanhar o cursor anda sozinho (a avaliação do ritmo vem no M6)
+    if (practice === 'follow') return;
     if (!mode || !view || summary) return;
     const events = mode.handle(event);
     if (events.length === 0) return;
@@ -140,6 +152,7 @@
       .then((content) => view!.load(content, source.title))
       .then(() => {
         timeline = view!.timeline;
+        measures = view!.measures;
         sheetTitle = view!.osmd.Sheet.TitleString ?? '';
         startSession();
       })
@@ -150,10 +163,16 @@
   const unsubscribe = inputHub.subscribe((event) => handleInput(event));
 
   // o Android pode encerrar o app em segundo plano sem aviso: grava ao sair da tela
-  const onHidden = () => document.visibilityState === 'hidden' && persistSession();
+  // (e para o som: em segundo plano o relógio do navegador fica impreciso)
+  const onHidden = () => {
+    if (document.visibilityState !== 'hidden') return;
+    stopPlayback();
+    persistSession();
+  };
   document.addEventListener('visibilitychange', onHidden);
 
   onDestroy(() => {
+    stopPlayback();
     persistSession();
     document.removeEventListener('visibilitychange', onHidden);
     unsubscribe();
@@ -173,7 +192,143 @@
   function setHands(h: HandSelection) {
     settings.score.hands = h;
     saveSettings();
-    startSession();
+    restartPlayback(() => startSession());
+  }
+
+  // ---- reprodução: metrônomo e modo acompanhar ----
+  type Practice = 'wait' | 'follow';
+  let practice = $state<Practice>('wait');
+  let measures = $state.raw<MeasureInfo[]>([]);
+  let playing = $state(false);
+  /** Tempo atual do compasso (indicador) e quantos tempos ele tem. */
+  let beat = $state<{ index: number; count: number } | null>(null);
+  let playWarning = $state('');
+  let player: Player | null = null;
+
+  const BPM_MIN = 20;
+  const BPM_MAX = 240;
+  const writtenBpm = $derived(measures.find((m) => m.tempo)?.tempo ?? null);
+  const bpm = $derived(
+    settings.playback.bpm[source.id] ?? writtenBpm ?? settings.playback.defaultBpm,
+  );
+  const listenLabels: [ListenMode, string][] = [
+    ['none', 'nada'],
+    ['other', 'a outra mão'],
+    ['all', 'tudo'],
+  ];
+
+  /** Quais notas o app toca, conforme "Ouvir" e a mão escolhida. */
+  function playSelection(): PlaySelection {
+    const listen = settings.playback.listen;
+    const hands = settings.score.hands;
+    if (listen === 'all') return 'both';
+    if (listen === 'none' || hands === 'both') return 'none';
+    return hands === 'right' ? 'left' : 'right';
+  }
+
+  function startPlayback() {
+    if (!view || !timeline.length || !measures.length) return;
+    audioContext(); // o áudio só pode começar num toque do usuário
+    const position = view.position;
+    const follow = practice === 'follow';
+    const metronome = follow ? settings.playback.metronome : true;
+    const play = follow ? playSelection() : 'none';
+    const out = makeOutputs({ clicks: metronome, notes: play !== 'none' });
+    playWarning = out.warning;
+
+    let schedule;
+    let repeat: boolean;
+    const measure = measures[timeline[position]?.measure ?? 0]!;
+    if (follow) {
+      const range = loop ? loopPositions(timeline, loop) : null;
+      const from = range ? range.from : measureStart(timeline, position);
+      const to = range ? range.to : timeline.length - 1;
+      schedule = buildSchedule(timeline, measures, {
+        bpm,
+        from,
+        to,
+        countIn: settings.playback.countIn,
+        metronome,
+        play,
+      });
+      repeat = range !== null;
+    } else {
+      // só o metrônomo, na fórmula do compasso do cursor (bpm em semínimas → pulsos)
+      const { beat: unit } = beatGrid(measure.beats, measure.beatType);
+      schedule = metronomeSchedule(bpm / 4 / unit, measure.beats, measure.beatType);
+      repeat = true;
+    }
+    player = new Player(out, onVisual, () => {
+      playing = false;
+      beat = null;
+    });
+    player.start(schedule, repeat);
+    playing = true;
+  }
+
+  function onVisual(e: VisualEvent) {
+    if (e.kind === 'cursor') view?.moveTo(e.position);
+    else if (e.kind === 'click') {
+      const m = measures[timeline[view?.position ?? 0]?.measure ?? 0];
+      const count = m ? beatGrid(m.beats, m.beatType).count : 4;
+      beat = { index: e.beat, count };
+    }
+  }
+
+  function stopPlayback() {
+    player?.stop();
+    player = null;
+    playing = false;
+    beat = null;
+  }
+
+  /** Para, aplica a mudança e, se estava tocando, recomeça do compasso do cursor. */
+  function restartPlayback(change: () => void = () => {}) {
+    const was = playing;
+    stopPlayback();
+    change();
+    if (was) startPlayback();
+  }
+
+  const togglePlayback = () => (playing ? stopPlayback() : startPlayback());
+
+  function setPractice(p: Practice) {
+    if (p === practice) return;
+    const position = view?.position ?? 0;
+    stopPlayback();
+    practice = p;
+    if (p === 'wait') {
+      // retoma o modo espera no ponto em que o cursor parou
+      startSession();
+      const i = stepAtOrAfter(steps, position);
+      if (mode && i >= 0) {
+        mode.jumpTo(i);
+        tick++;
+        if (mode.current) view?.moveTo(mode.current.position);
+      }
+    }
+  }
+
+  function setBpm(value: number) {
+    const v = Math.round(Math.min(BPM_MAX, Math.max(BPM_MIN, value)));
+    restartPlayback(() => {
+      settings.playback.bpm[source.id] = v;
+      saveSettings();
+    });
+  }
+
+  function setListen(l: ListenMode) {
+    restartPlayback(() => {
+      settings.playback.listen = l;
+      saveSettings();
+    });
+  }
+
+  function toggleMetronome() {
+    restartPlayback(() => {
+      settings.playback.metronome = !settings.playback.metronome;
+      saveSettings();
+    });
   }
 
   // ---- loop de compassos ----
@@ -203,15 +358,19 @@
       loopError = 'Não há notas para tocar nesse trecho com a mão escolhida.';
       return;
     }
-    loop = candidate;
     loopPanel = false;
-    startSession();
+    restartPlayback(() => {
+      loop = candidate;
+      startSession();
+    });
   }
 
   function clearLoop() {
-    loop = null;
     loopPanel = false;
-    startSession();
+    restartPlayback(() => {
+      loop = null;
+      startSession();
+    });
   }
 
   function zoom(factor: number) {
@@ -255,7 +414,8 @@
   function onKey(e: KeyboardEvent) {
     if (summary) return;
     if (e.target instanceof HTMLElement && e.target.closest('input, select, textarea')) return;
-    if (e.key === 'ArrowRight') goStep(1);
+    if (e.key === ' ') togglePlayback();
+    else if (e.key === 'ArrowRight') goStep(1);
     else if (e.key === 'ArrowLeft') goStep(-1);
     else if (e.key === 'PageDown') view?.turnPage(1);
     else if (e.key === 'PageUp') view?.turnPage(-1);
@@ -287,7 +447,9 @@
     <span class="group">
       <button onclick={() => goStep(-1)} aria-label="Passo anterior" disabled={!mode}>◀</button>
       <span class="counter">
-        {#if current}
+        {#if practice === 'follow'}
+          c.{(vs?.measure ?? 0) + 1}
+        {:else if current}
           Passo {current.index + 1}/{steps.length} · c.{current.measure + 1}
         {:else if mode?.finished}
           Fim
@@ -334,6 +496,58 @@
     </span>
   </div>
 
+  <div class="transport">
+    <span class="group segmented" role="group" aria-label="Modo">
+      <button class:active={practice === 'wait'} onclick={() => setPractice('wait')}>Esperar</button
+      >
+      <button class:active={practice === 'follow'} onclick={() => setPractice('follow')}>
+        Acompanhar
+      </button>
+    </span>
+    <button
+      class="play"
+      class:active={playing}
+      onclick={togglePlayback}
+      disabled={loading || !!error}
+    >
+      {#if playing}■ Parar{:else if practice === 'follow'}▶ Tocar{:else}▶ Metrônomo{/if}
+    </button>
+    <span class="group">
+      <button onclick={() => setBpm(bpm - 5)} aria-label="Mais devagar">−</button>
+      <span class="bpm">
+        <strong>{bpm}</strong> bpm
+        {#if writtenBpm}<span class="muted">({Math.round((bpm / writtenBpm) * 100)}%)</span>{/if}
+      </span>
+      <button onclick={() => setBpm(bpm + 5)} aria-label="Mais rápido">+</button>
+    </span>
+    {#if practice === 'follow'}
+      <button class:active={settings.playback.metronome} onclick={toggleMetronome}>
+        Metrônomo
+      </button>
+      <label class="listen">
+        Ouvir
+        <select
+          value={settings.playback.listen}
+          onchange={(e) => setListen((e.currentTarget as HTMLSelectElement).value as ListenMode)}
+        >
+          {#each listenLabels as [value, label] (value)}
+            <option {value} disabled={value === 'other' && settings.score.hands === 'both'}>
+              {label}
+            </option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+    {#if beat}
+      <span class="beats" aria-label="Tempo {beat.index + 1} de {beat.count}">
+        {#each Array.from({ length: beat.count }, (_, k) => k) as i (i)}
+          <i class:on={i === beat.index} class:first={i === 0}></i>
+        {/each}
+      </span>
+    {/if}
+    {#if playWarning}<span class="warn">{playWarning}</span>{/if}
+  </div>
+
   {#if loopPanel}
     <div class="loop-panel">
       <label>
@@ -351,7 +565,7 @@
     </div>
   {/if}
 
-  <div class="expected">
+  <div class="expected" class:hidden={practice === 'follow'}>
     <span>
       Esperado:
       {#if current}
@@ -471,6 +685,61 @@
   }
   .dot.on {
     background: var(--ok);
+  }
+  .transport {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .transport button {
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    padding: 0.2rem 0.6rem;
+  }
+  .transport .play {
+    min-width: 7.5rem;
+    font-weight: 600;
+  }
+  .bpm {
+    min-width: 6.5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .listen {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .listen select {
+    min-height: 2.5rem;
+  }
+  .beats {
+    display: inline-flex;
+    gap: 0.35rem;
+  }
+  .beats i {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+  }
+  .beats i.first {
+    border-color: var(--muted);
+  }
+  .beats i.on {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .warn {
+    color: var(--warn);
+    font-size: 0.9rem;
+  }
+  .expected.hidden {
+    display: none;
   }
   .loop-panel {
     display: flex;

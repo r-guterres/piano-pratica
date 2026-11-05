@@ -1,6 +1,53 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { pitchName } from '../core/pitch';
+  import { midi } from '../input/midi.svelte';
+  import { Player } from '../playback/player';
+  import { metronomeSchedule } from '../playback/schedule';
+  import { audioContext, estimatedSpeakerLatency, SpeakerSink } from '../playback/sinks';
   import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN } from './settings.svelte';
+
+  const pb = settings.playback;
+  const outputs = $derived(midi.outputs.filter((o) => o.state === 'connected'));
+
+  // ---- teste do atraso do alto-falante ----
+  // Cliques pelo tablet com um ponto que pisca no instante compensado: ajusta-se o
+  // atraso até o ponto piscar junto com o som.
+  let testing = $state(false);
+  let flash = $state(false);
+  let estimated = $state<number | null>(null);
+  let tester: Player | null = null;
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function startTest() {
+    audioContext();
+    estimated = Math.round(estimatedSpeakerLatency());
+    tester = new Player(
+      { clicks: new SpeakerSink(pb.speakerLatencyMs), notes: null },
+      (e) => {
+        if (e.kind !== 'click') return;
+        flash = true;
+        clearTimeout(flashTimer);
+        flashTimer = setTimeout(() => (flash = false), 120);
+      },
+      () => {},
+    );
+    tester.start(metronomeSchedule(60, 1, 4), true);
+    testing = true;
+  }
+  function stopTest() {
+    tester?.stop();
+    tester = null;
+    testing = false;
+  }
+  function changeLatency(fn: () => void) {
+    const was = testing;
+    stopTest();
+    fn();
+    saveSettings();
+    if (was) startTest();
+  }
+  onDestroy(stopTest);
 
   const orientations = [
     ['portrait', 'retrato'],
@@ -66,6 +113,93 @@
 </section>
 
 <section class="card">
+  <h2>Som</h2>
+  <div class="row">
+    <label class="field">
+      Notas da partitura
+      <select bind:value={pb.notesOutput} onchange={saveSettings}>
+        <option value="casio">pelo teclado (Casio, via MIDI)</option>
+        <option value="speaker">pelo alto-falante do tablet</option>
+      </select>
+    </label>
+    <label class="field">
+      Metrônomo
+      <select bind:value={pb.clickOutput} onchange={saveSettings}>
+        <option value="casio">pelo teclado (Casio, via MIDI)</option>
+        <option value="speaker">pelo alto-falante do tablet</option>
+      </select>
+    </label>
+    <label class="field">
+      Contagem antes de tocar
+      <select bind:value={pb.countIn} onchange={saveSettings}>
+        <option value={0}>nenhuma</option>
+        <option value={1}>1 compasso</option>
+        <option value={2}>2 compassos</option>
+      </select>
+    </label>
+    <label class="field">
+      Andamento de partituras sem andamento escrito
+      <input type="number" min="20" max="240" bind:value={pb.defaultBpm} onchange={saveSettings} />
+    </label>
+  </div>
+  <p class="muted">
+    {#if outputs.length}
+      Saída MIDI: {outputs.map((o) => o.name).join(', ')}.
+    {:else}
+      Nenhuma saída MIDI conectada: o som sai pelo tablet até o teclado ser conectado.
+    {/if}
+    No teclado, as notas vão pelo canal 2 (o timbre escolhido no Casio para você tocar não muda) e o metrônomo
+    pelo canal de percussão (10).
+    {#if midi.echoes}
+      Notas devolvidas pelo teclado e ignoradas: {midi.echoes}.
+    {/if}
+  </p>
+
+  <h3>Atraso do alto-falante</h3>
+  <p class="muted">
+    O som do tablet sai um pouco depois do instante agendado; o app atrasa o cursor (e o Casio) na
+    mesma medida para tudo coincidir. Toque em Testar: o ponto deve piscar junto com o clique. Se
+    piscar antes, aumente o atraso.
+  </p>
+  <div class="row">
+    <label class="check inline">
+      <input
+        type="checkbox"
+        checked={pb.speakerLatencyMs === null}
+        onchange={(e) =>
+          changeLatency(
+            () =>
+              (pb.speakerLatencyMs = (e.currentTarget as HTMLInputElement).checked
+                ? null
+                : Math.round(estimatedSpeakerLatency())),
+          )}
+      />
+      Automático{#if estimated !== null}&nbsp;(estimado: {estimated} ms){/if}
+    </label>
+    {#if pb.speakerLatencyMs !== null}
+      <label class="field grow">
+        Atraso: {pb.speakerLatencyMs} ms
+        <input
+          type="range"
+          min="0"
+          max="400"
+          step="5"
+          value={pb.speakerLatencyMs}
+          onchange={(e) =>
+            changeLatency(
+              () => (pb.speakerLatencyMs = Number((e.currentTarget as HTMLInputElement).value)),
+            )}
+        />
+      </label>
+    {/if}
+    <button onclick={() => (testing ? stopTest() : startTest())}>
+      {testing ? '■ Parar teste' : '▶ Testar'}
+    </button>
+    <span class="flash" class:on={flash} aria-hidden="true"></span>
+  </div>
+</section>
+
+<section class="card">
   <h2>Entrada</h2>
   <label class="check">
     <input type="checkbox" bind:checked={settings.input.computerKeyboard} onchange={saveSettings} />
@@ -114,5 +248,37 @@
   input[type='range'] {
     width: 100%;
     min-height: 2.75rem;
+  }
+  input[type='number'] {
+    font: inherit;
+    width: 6rem;
+    min-height: 2.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  h3 {
+    font-size: 0.95rem;
+    margin: 1rem 0 0.25rem;
+  }
+  .check.inline {
+    margin: 0;
+    align-items: center;
+  }
+  .row {
+    align-items: center;
+  }
+  .flash {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: 2px solid var(--border);
+  }
+  .flash.on {
+    background: var(--accent);
+    border-color: var(--accent);
   }
 </style>
