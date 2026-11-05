@@ -12,7 +12,30 @@ profissional: explique as decisões técnicas em poucas linhas.
 - **M2 (modo espera):** implementado; **aceito no tablet em 2026-11-03** (após a correção da outra mão chegando atrasada, 9fb630d).
 - **M3 (treino de leitura):** implementado; **aceito no tablet em 2026-11-05** (após a correção da lentidão pesando mais que o erro, 0a75ac6).
 - **M4 (persistência e acabamento):** implementado (IndexedDB, tela de progresso, PWA offline com aviso de versão nova, exportar JSON); **aceito no tablet em 2026-11-05** (instalado, offline, histórico persiste).
-- Todos os marcos do plano inicial (M0–M4) estão implementados.
+- Todos os marcos do plano inicial (M0–M4) estão implementados. **Em andamento: M5.**
+
+### Roteiro combinado em 2026-11-05 (M5–M9)
+
+O Robert quer absorver no app o artefato **"Trilha do Teclado"** (https://claude.ai/artifact/WB8vFA6Wqfh2jrgWANj4fq):
+rotina diária em blocos por fase, pilares com pontos, marcos e "chefões", repertório com revisão espaçada,
+diário e treinos de ouvido, acordes e "ler e tocar". Os dados dele ficam no db do artefato (`estado/principal`,
+`diario`, `relatorios`); a leitura é feita com a ferramenta ArtifactData. Ele **abre mão do "Professor"** (chat com o
+Claude dentro do artefato): no lugar dele fica o ciclo relatório → conversa com o Claude → plano importável.
+Músicas pop protegidas não entram no repositório público: ele importa os MusicXML (ficam só no tablet).
+
+- **M5, metrônomo e reprodução:** metrônomo (bpm, compasso, acento, contagem inicial), modo "acompanhar" (o cursor
+  anda no tempo), andamento ajustável, ouvir a partitura ou só a outra mão. Som **pelo Casio (MIDI) ou pelo
+  alto-falante do tablet, à escolha** (inclusive o metrônomo), com calibração do atraso do alto-falante.
+  Metrônomo avulso para escalas. Aceite: tocar o Minueto acompanhando o cursor a 60% ouvindo a ME.
+- **M6, ritmo e gravação:** avaliar o tempo no modo acompanhar (adiantado/atrasado), escada de andamento (+5 bpm
+  após 3 execuções limpas), mapa de compassos problemáticos entre sessões, treino de pedal sincopado (dificuldade real
+  dele em Let It Be), gravação MIDI (ouvir e exportar .mid).
+- **M7, a Trilha:** aba "Hoje" com a sessão do dia em blocos e o "dia mínimo", fases/tópicos/marcos/pilares/cofrinho,
+  repertório com revisão espaçada, diário, migração dos dados do artefato.
+- **M8, treinos do artefato com MIDI:** acordes com inversões, ouvido (maior/menor, intervalos, graus), ler e tocar com
+  ritmo, cifras com graus e transposição.
+- **M9, ciclo com o Claude:** relatório em texto (compartilhar pelo Android), importar plano/currículo em JSON,
+  importar backup.
 
 ## Decisões tomadas
 
