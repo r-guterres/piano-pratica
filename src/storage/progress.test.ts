@@ -10,6 +10,7 @@ import {
   exportFileName,
   pieceProgress,
   toExportJson,
+  troubleMeasures,
 } from './progress';
 
 // datas no fuso local, como no aparelho
@@ -121,6 +122,24 @@ describe('progress', () => {
       firstCleanPct: 50,
       lastCleanPct: 90,
     });
+  });
+
+  it('ranks the measures with most problems over the last sessions of a piece', () => {
+    const withErrors = (scoreId: string, day: number, errors: Record<number, number>) => ({
+      ...session(scoreId, at(day), 10, 5),
+      summary: { ...waitSummary(10, 5, MIN), errorsByMeasure: errors },
+    });
+    const sessions = [
+      withErrors('a', 1, { 7: 9 }), // fica de fora com lastN = 2
+      withErrors('a', 2, { 3: 2, 4: 1 }),
+      withErrors('a', 3, { 3: 1, 5: 0, 6: 3 }),
+      withErrors('b', 3, { 1: 50 }), // outra peça
+    ];
+    expect(troubleMeasures(sessions, 'a', 2)).toEqual([
+      { measure: 3, count: 3, sessions: 2 },
+      { measure: 6, count: 3, sessions: 1 },
+      { measure: 4, count: 1, sessions: 1 },
+    ]);
   });
 
   it('lists the drill rounds that had answers, in order', () => {

@@ -80,6 +80,44 @@ export function pieceProgress(sessions: readonly ScoreSessionRecord[]): PiecePro
     .sort((a, b) => b.lastAt - a.lastAt);
 }
 
+export interface MeasureTrouble {
+  /** Índice do compasso (0 = primeiro). */
+  measure: number;
+  /** Problemas somados (erradas, perdidas, fora do tempo). */
+  count: number;
+  /** Em quantas das sessões consideradas ele teve problema. */
+  sessions: number;
+}
+
+/**
+ * Compassos onde mais se erra numa peça, somando as últimas `lastN` sessões
+ * (modo espera e acompanhar), do pior para o melhor.
+ */
+export function troubleMeasures(
+  sessions: readonly ScoreSessionRecord[],
+  scoreId: string,
+  lastN = 10,
+  top = 6,
+): MeasureTrouble[] {
+  const recent = sessions
+    .filter((s) => s.scoreId === scoreId)
+    .sort((a, b) => a.startedAt - b.startedAt)
+    .slice(-lastN);
+  const byMeasure = new Map<number, MeasureTrouble>();
+  for (const s of recent)
+    for (const [m, count] of Object.entries(s.summary.errorsByMeasure)) {
+      if (!count) continue;
+      const measure = Number(m);
+      const t = byMeasure.get(measure) ?? { measure, count: 0, sessions: 0 };
+      t.count += count;
+      t.sessions++;
+      byMeasure.set(measure, t);
+    }
+  return [...byMeasure.values()]
+    .sort((a, b) => b.count - a.count || a.measure - b.measure)
+    .slice(0, top);
+}
+
 export interface RoundPoint {
   startedAt: number;
   answered: number;

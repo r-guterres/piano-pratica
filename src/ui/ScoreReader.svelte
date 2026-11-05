@@ -26,6 +26,7 @@
   import { ScoreView, type ScoreViewState } from '../score/ScoreView';
   import { buildSteps, stepAtOrAfter } from '../score/steps';
   import { appHistory, newId, type ScoreSessionRecord } from '../storage/history';
+  import { troubleMeasures, type MeasureTrouble } from '../storage/progress';
   import type { HandSelection, MeasureInfo, TimelinePosition } from '../score/types';
   import type { ScoreSource } from './Library.svelte';
   import PianoKeyboard from './PianoKeyboard.svelte';
@@ -496,6 +497,31 @@
     });
   }
 
+  // ---- compassos difíceis (histórico das últimas sessões desta peça) ----
+  let troublePanel = $state(false);
+  let troubles = $state<MeasureTrouble[] | null>(null);
+
+  async function toggleTroublePanel() {
+    troublePanel = !troublePanel;
+    if (!troublePanel) return;
+    // inclui a sessão em andamento
+    persistSession();
+    troubles = null;
+    try {
+      troubles = troubleMeasures(await appHistory().scoreSessions(), source.id);
+    } catch {
+      troubles = [];
+    }
+  }
+
+  function loopMeasure(measure: number) {
+    troublePanel = false;
+    restartPlayback(() => {
+      loop = { startMeasure: measure, endMeasure: measure };
+      startSession();
+    });
+  }
+
   function clearLoop() {
     loopPanel = false;
     restartPlayback(() => {
@@ -603,6 +629,13 @@
       <button class:active={loop !== null} onclick={toggleLoopPanel} title="Repetir um trecho">
         {loop ? `Loop c.${loop.startMeasure + 1}–${loop.endMeasure + 1}` : 'Loop'}
       </button>
+      <button
+        class:active={troublePanel}
+        onclick={toggleTroublePanel}
+        title="Compassos onde você mais erra"
+      >
+        Difíceis
+      </button>
       <button onclick={startSession} title="Recomeçar a sessão" aria-label="Recomeçar">⟲</button>
       <button onclick={() => mode && (summary = mode.summary())} disabled={!mode}>Resumo</button>
     </span>
@@ -708,6 +741,24 @@
     {/if}
     {#if playWarning}<span class="warn">{playWarning}</span>{/if}
   </div>
+
+  {#if troublePanel}
+    <div class="loop-panel trouble">
+      {#if troubles === null}
+        <span class="muted">Carregando…</span>
+      {:else if troubles.length === 0}
+        <span class="muted">Nenhum erro registrado nesta peça nas últimas sessões.</span>
+      {:else}
+        <span class="muted">Mais erros nas últimas 10 sessões:</span>
+        {#each troubles as t (t.measure)}
+          <button onclick={() => loopMeasure(t.measure)} title="Repetir este compasso em loop">
+            c.{t.measure + 1}: {t.count}
+            {t.count === 1 ? 'erro' : 'erros'}{t.sessions > 1 ? ` em ${t.sessions} sessões` : ''} ↻
+          </button>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 
   {#if loopPanel}
     <div class="loop-panel">
