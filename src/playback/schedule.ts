@@ -42,6 +42,12 @@ export interface Schedule {
 
 const EPS = 1e-6;
 const DEFAULT_VELOCITY = 72;
+/**
+ * Folga entre soltar uma tecla e tocá-la de novo. Com o mesmo horário, o
+ * caminho até o teclado (Android → USB-MIDI) pode entregar o note-on antes do
+ * note-off, e a nota repetida não soa (bug do tablet, Sol4–Sol4 no Minueto).
+ */
+export const REARTICULATE_MS = 20;
 
 /** Pulsação do compasso: em 6/8, 9/8 e 12/8 o tempo é a semínima pontuada. */
 export function beatGrid(beats: number, beatType: number): { beat: number; count: number } {
@@ -126,7 +132,7 @@ export function buildSchedule(
     position: p.index,
   }));
   if (opt.metronome) for (const s of spans) body.push(...clicksIn(s, toMs));
-  if (opt.play !== 'none') body.push(...noteEvents(positions, opt, toMs));
+  if (opt.play !== 'none') body.push(...noteEvents(positions, opt, toMs, bodyMs));
   body.sort(byTime);
 
   // contagem: compassos inteiros na fórmula e no andamento do primeiro compasso
@@ -152,6 +158,7 @@ function noteEvents(
   positions: readonly TimelinePosition[],
   opt: ScheduleOptions,
   toMs: (x: number) => number,
+  bodyMs: number,
 ): PlaybackEvent[] {
   const velocity = opt.velocity ?? DEFAULT_VELOCITY;
   const byPitch = new Map<number, { on: number; off: number }[]>();
@@ -167,12 +174,17 @@ function noteEvents(
   for (const [pitch, list] of byPitch) {
     list.sort((a, b) => a.on - b.on);
     list.forEach((note, i) => {
-      // a mesma tecla tocada de novo antes de a anterior acabar: solta antes
-      const next = list[i + 1];
-      const off = next && next.on < note.off ? next.on : note.off;
+      // a última nota volta para a primeira se o trecho se repete (loop)
+      const next = list[i + 1] ?? (list[0]!.on === 0 ? { on: bodyMs, off: bodyMs } : undefined);
       if (next && next.on === note.on) return; // duas vozes na mesma nota: uma só
+      // a mesma tecla tocada de novo (logo em seguida ou antes de a anterior
+      // acabar): solta um pouco antes, sem passar da metade da nota
+      const off =
+        next && next.on <= note.off
+          ? Math.max(note.on + (next.on - note.on) / 2, next.on - REARTICULATE_MS)
+          : note.off;
       out.push({ t: note.on, kind: 'on', pitch, velocity });
-      out.push({ t: Math.max(note.on, off), kind: 'off', pitch });
+      out.push({ t: off, kind: 'off', pitch });
     });
   }
   return out;

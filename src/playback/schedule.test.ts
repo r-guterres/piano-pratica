@@ -4,6 +4,7 @@ import {
   beatGrid,
   buildSchedule,
   metronomeSchedule,
+  REARTICULATE_MS,
   type PlaybackEvent,
   type ScheduleOptions,
 } from './schedule';
@@ -115,11 +116,30 @@ describe('buildSchedule', () => {
     expect(s.body.map((e) => [e.t, e.kind])).toEqual([
       [0, 'on'],
       [0, 'cursor'],
-      [1000, 'off'],
+      [1000 - REARTICULATE_MS, 'off'],
       [1000, 'on'],
       [1000, 'cursor'],
       [2000, 'off'],
     ]);
+  });
+
+  // Bug do tablet (M5): Sol4 seguido de Sol4 pelo Casio só tocava o primeiro. O
+  // note-off e o note-on saíam com o mesmo horário e o caminho até o teclado
+  // pode trocar a ordem: o teclado recebia o novo note-on e logo o note-off.
+  it('releases a repeated key strictly before striking it again', () => {
+    const t = tl([0, 0, 0, [note(67, 0.25)]], [0, 0.25, 0.25, [note(67, 0.25)]]);
+    const s = buildSchedule(t, [measure(0, 0)], opts({ play: 'both', metronome: false }));
+    const [firstOff] = only(s.body, 'off');
+    const secondOn = only(s.body, 'on')[1]!;
+    expect(secondOn.t - firstOff!.t).toBeGreaterThanOrEqual(10);
+    expect(firstOff!.t).toBeGreaterThan(0);
+  });
+
+  it('also leaves the gap when a loop ends and restarts on the same key', () => {
+    const t = tl([0, 0, 0, [note(67, 0.5)]], [0, 0.5, 0.5, [note(67, 0.5)]]);
+    const s = buildSchedule(t, [measure(0, 0)], opts({ play: 'both', metronome: false }));
+    expect(s.bodyMs).toBe(4000);
+    expect(times(only(s.body, 'off'))).toEqual([2000 - REARTICULATE_MS, 4000 - REARTICULATE_MS]);
   });
 
   it('scales a written tempo and its later changes', () => {
