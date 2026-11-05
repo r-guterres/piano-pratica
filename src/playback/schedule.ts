@@ -28,7 +28,17 @@ export interface ScheduleOptions {
   metronome: boolean;
   /** Quais notas tocar. */
   play: PlaySelection;
+  /** Quais notas o aluno deve tocar (para avaliar o ritmo). */
+  expect?: PlaySelection;
   velocity?: number;
+}
+
+/** Uma nota que o aluno deve tocar, com o instante (ms desde o início do trecho). */
+export interface ExpectedNote {
+  t: number;
+  pitch: number;
+  position: number;
+  measure: number;
 }
 
 export interface Schedule {
@@ -38,6 +48,8 @@ export interface Schedule {
   /** O trecho, com t desde o início dele (depois da contagem). */
   body: PlaybackEvent[];
   bodyMs: number;
+  /** Notas esperadas do aluno no trecho, em ordem de tempo. */
+  expected: ExpectedNote[];
 }
 
 const EPS = 1e-6;
@@ -90,7 +102,7 @@ export function buildSchedule(
   opt: ScheduleOptions,
 ): Schedule {
   const positions = timeline.slice(opt.from, opt.to + 1);
-  const empty: Schedule = { countIn: [], countInMs: 0, body: [], bodyMs: 0 };
+  const empty: Schedule = { countIn: [], countInMs: 0, body: [], bodyMs: 0, expected: [] };
   if (!positions.length || !measures.length) return empty;
 
   const written = measures[positions[0]!.measure]?.tempo ?? measures.find((m) => m.tempo)?.tempo;
@@ -149,7 +161,30 @@ export function buildSchedule(
     };
     countIn.push(...clicksIn(span, (x) => bar * barMs + x * first.msPerWhole));
   }
-  return { countIn, countInMs: opt.countIn * barMs, body, bodyMs };
+  return {
+    countIn,
+    countInMs: opt.countIn * barMs,
+    body,
+    bodyMs,
+    expected: expectedNotes(positions, opt.expect ?? 'none', toMs),
+  };
+}
+
+const struck = (n: TimelinePosition['notes'][number], hands: PlaySelection) =>
+  !n.tieContinuation && !n.grace && hands !== 'none' && (hands === 'both' || n.hand === hands);
+
+function expectedNotes(
+  positions: readonly TimelinePosition[],
+  hands: PlaySelection,
+  toMs: (x: number) => number,
+): ExpectedNote[] {
+  const out: ExpectedNote[] = [];
+  for (const pos of positions) {
+    const pitches = new Set(pos.notes.filter((n) => struck(n, hands)).map((n) => n.pitch));
+    for (const pitch of [...pitches].sort((a, b) => a - b))
+      out.push({ t: toMs(pos.perfTime), pitch, position: pos.index, measure: pos.measure });
+  }
+  return out;
 }
 
 const measureMs = (s: Span) => (s.perfEnd - s.perfStart) * s.msPerWhole;
@@ -164,8 +199,7 @@ function noteEvents(
   const byPitch = new Map<number, { on: number; off: number }[]>();
   for (const pos of positions)
     for (const n of pos.notes) {
-      if (n.tieContinuation || n.grace) continue;
-      if (opt.play !== 'both' && n.hand !== opt.play) continue;
+      if (!struck(n, opt.play)) continue;
       const list = byPitch.get(n.pitch) ?? [];
       list.push({ on: toMs(pos.perfTime), off: toMs(pos.perfTime + n.duration) });
       byPitch.set(n.pitch, list);
@@ -203,5 +237,5 @@ export function metronomeSchedule(bpm: number, beats: number, beatType: number):
     accent: k === 0 && count > 1,
     beat: k,
   }));
-  return { countIn: [], countInMs: 0, body, bodyMs: count * interval };
+  return { countIn: [], countInMs: 0, body, bodyMs: count * interval, expected: [] };
 }

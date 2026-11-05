@@ -5,6 +5,8 @@
   import { heldPitches } from '../input/held.svelte';
   import { inputHub } from '../input/hub';
   import { midi } from '../input/midi.svelte';
+  import { RhythmJudge, type RhythmEvent } from '../practice/rhythm';
+  import { TempoLadder } from '../practice/tempoLadder';
   import {
     loopStepRange,
     WaitMode,
@@ -38,6 +40,8 @@
     clean: '#2e7d32', // passo tocado de primeira
     fixed: '#e65100', // passo concluído depois de erro(s)
     wrong: '#d32f2f', // pisca ao errar
+    offtime: '#e65100', // acompanhar: tocada fora do tempo
+    missed: '#9e2b25', // acompanhar: nota que passou sem ser tocada
   };
 
   let viewport: HTMLDivElement;
@@ -103,8 +107,11 @@
   }
 
   function handleInput(event: InputEvent) {
-    // no modo acompanhar o cursor anda sozinho (a avaliação do ritmo vem no M6)
-    if (practice === 'follow') return;
+    // no modo acompanhar o cursor anda sozinho; o juiz avalia o ritmo
+    if (practice === 'follow') {
+      if (judge && event.type === 'on') applyRhythm(judge.handle(event));
+      return;
+    }
     if (!mode || !view || summary) return;
     const events = mode.handle(event);
     if (events.length === 0) return;
@@ -250,6 +257,7 @@
         countIn: settings.playback.countIn,
         metronome,
         play,
+        expect: settings.score.hands,
       });
       repeat = range !== null;
     } else {
@@ -259,14 +267,136 @@
       repeat = true;
     }
     player = new Player(out, onVisual, () => {
+      finishFollow();
       playing = false;
       beat = null;
     });
     player.start(schedule, repeat);
     playing = true;
+    if (follow) {
+      view.clearColors();
+      judge = new RhythmJudge(schedule.expected, {
+        origin: player.bodyOrigin,
+        bodyMs: schedule.bodyMs,
+        loop: repeat,
+      });
+      lastHit = null;
+      // só em `npm run dev`: permite a testes de navegador tocar "no tempo"
+      if (import.meta.env.DEV)
+        (window as unknown as { __follow: unknown }).__follow = {
+          origin: player.bodyOrigin,
+          bodyMs: schedule.bodyMs,
+          expected: schedule.expected,
+        };
+      ladder = repeat && settings.playback.ladder ? new TempoLadder(ladderOptions()) : null;
+      followRecord = {
+        id: newId(),
+        scoreId: source.id,
+        title,
+        startedAt: Date.now(),
+        hands: settings.score.hands,
+        loop: loop ? { ...loop } : null,
+        stepCount: schedule.expected.length,
+        mode: 'follow',
+        bpm,
+      };
+      rhythmTick++;
+    }
+  }
+
+  // ---- avaliação do ritmo (modo acompanhar) ----
+  let judge: RhythmJudge | null = null;
+  let ladder = $state.raw<TempoLadder | null>(null);
+  let rhythmTick = $state(0);
+  let lastHit = $state<{ text: string; kind: 'ok' | 'off' | 'bad' } | null>(null);
+  let ladderNote = $state('');
+  let ladderTarget = $state<number | null>(null);
+  let followRecord: Omit<ScoreSessionRecord, 'finished' | 'summary' | 'rhythm'> | null = null;
+  const rhythm = $derived.by(() => (void rhythmTick, judge?.summary() ?? null));
+  const ladderStreak = $derived.by(() => (void rhythmTick, ladder?.streak ?? 0));
+  const target = $derived(ladderTarget ?? writtenBpm ?? bpm + 20);
+
+  const ladderOptions = () => ({ step: 5, needed: 3, target });
+
+  function hitText(e: Extract<RhythmEvent, { type: 'hit' }>): string {
+    const ms = (e.offsetMs > 0 ? '+' : '') + Math.round(e.offsetMs) + ' ms';
+    const label =
+      e.timing === 'ontime' ? '✓ no tempo' : e.timing === 'early' ? 'adiantada' : 'atrasada';
+    return name(e.note.pitch) + ' ' + label + ' (' + ms + ')';
+  }
+
+  function applyRhythm(events: RhythmEvent[]) {
+    if (!events.length || !view) return;
+    for (const e of events) {
+      switch (e.type) {
+        case 'hit': {
+          const ok = e.timing === 'ontime';
+          view.colorNotes(e.note.position, [e.note.pitch], ok ? COLOR.clean : COLOR.offtime);
+          lastHit = { kind: ok ? 'ok' : 'off', text: hitText(e) };
+          break;
+        }
+        case 'wrong':
+          if (e.near) view.flash(e.near.position, [e.near.pitch], COLOR.wrong);
+          lastHit = { kind: 'bad', text: '✗ tocou ' + name(e.pitch) };
+          break;
+        case 'missed':
+          view.colorNotes(e.note.position, [e.note.pitch], COLOR.missed);
+          break;
+        case 'lapDone': {
+          if (!ladder) break;
+          const next = ladder.record(e.clean, bpm);
+          if (next !== null) {
+            ladderNote = '3 voltas limpas: subiu para ' + next + ' bpm';
+            // recomeça com o novo andamento fora do callback do Player
+            queueMicrotask(() => setBpm(next));
+          } else if (!e.clean) ladderNote = '';
+          break;
+        }
+      }
+    }
+    rhythmTick++;
+  }
+
+  /** Encerra a avaliação e grava a sessão do modo acompanhar. */
+  function finishFollow() {
+    if (!judge || !followRecord) return;
+    applyRhythm(judge.advance(performance.now()));
+    const r = judge.summary();
+    const record = followRecord;
+    judge = null;
+    followRecord = null;
+    rhythmTick++;
+    const played = r.ontime + r.early + r.late;
+    if (r.notes === 0 && r.wrong === 0 && played === 0) return;
+    appHistory()
+      .saveScoreSession({
+        ...record,
+        finished: false,
+        summary: {
+          completed: Math.max(r.notes, played),
+          clean: r.ontime,
+          wrongNotes: r.wrong + r.missed,
+          errorsByMeasure: r.problemsByMeasure,
+          mistakes: [],
+          durationMs: Math.max(0, Date.now() - record.startedAt),
+          laps: r.laps,
+          meanStepMs: null,
+        },
+        rhythm: r,
+      })
+      .catch((err: unknown) => console.warn('Não consegui salvar a sessão:', err));
   }
 
   function onVisual(e: VisualEvent) {
+    if (judge) applyRhythm(judge.advance(performance.now()));
+    if (e.kind === 'lap' && loop) {
+      // nova volta: limpa as cores do trecho
+      const range = loopPositions(timeline, loop);
+      if (range)
+        view?.clearColors(
+          Array.from({ length: range.to - range.from + 1 }, (_, k) => range.from + k),
+        );
+    }
     if (e.kind === 'cursor') view?.moveTo(e.position);
     else if (e.kind === 'click') {
       const m = measures[timeline[view?.position ?? 0]?.measure ?? 0];
@@ -277,6 +407,7 @@
 
   function stopPlayback() {
     player?.stop();
+    finishFollow();
     player = null;
     playing = false;
     beat = null;
@@ -545,6 +676,36 @@
         {/each}
       </span>
     {/if}
+    {#if practice === 'follow' && loop}
+      <button
+        class:active={settings.playback.ladder}
+        onclick={() =>
+          restartPlayback(() => {
+            settings.playback.ladder = !settings.playback.ladder;
+            saveSettings();
+          })}
+        title="Sobe 5 bpm a cada 3 voltas limpas seguidas"
+      >
+        Escada
+      </button>
+      {#if settings.playback.ladder}
+        <label class="listen">
+          até
+          <input
+            class="target"
+            type="number"
+            min="20"
+            max="240"
+            value={target}
+            onchange={(e) =>
+              restartPlayback(
+                () => (ladderTarget = Number((e.currentTarget as HTMLInputElement).value)),
+              )}
+          />
+          bpm
+        </label>
+      {/if}
+    {/if}
     {#if playWarning}<span class="warn">{playWarning}</span>{/if}
   </div>
 
@@ -562,6 +723,42 @@
       <button class="primary" onclick={applyLoop}>Repetir trecho</button>
       {#if loop}<button onclick={clearLoop}>Tirar loop</button>{/if}
       {#if loopError}<span class="error">{loopError}</span>{/if}
+    </div>
+  {/if}
+
+  {#if practice === 'follow'}
+    <div class="expected rhythm">
+      {#if lastHit}
+        <strong class="hit {lastHit.kind}">{lastHit.text}</strong>
+      {:else}
+        <span class="muted">
+          {playing ? 'Toque junto com o cursor' : 'Toque em ▶ Tocar e acompanhe o cursor'}
+          ({settings.score.hands === 'both'
+            ? 'as duas mãos'
+            : settings.score.hands === 'right'
+              ? 'mão direita'
+              : 'mão esquerda'})
+        </span>
+      {/if}
+      {#if rhythm}
+        <span>
+          No tempo <b>{rhythm.ontime}</b> · adiantadas <b>{rhythm.early}</b> · atrasadas
+          <b>{rhythm.late}</b> · erradas <b>{rhythm.wrong}</b> · perdidas <b>{rhythm.missed}</b>
+        </span>
+        {#if rhythm.meanOffsetMs !== null && rhythm.ontime + rhythm.early + rhythm.late >= 4}
+          <span class="muted">
+            {Math.abs(rhythm.meanOffsetMs) < 25
+              ? 'sem tendência'
+              : rhythm.meanOffsetMs < 0
+                ? 'tendência: adiantar ' + Math.round(-rhythm.meanOffsetMs) + ' ms'
+                : 'tendência: atrasar ' + Math.round(rhythm.meanOffsetMs) + ' ms'}
+          </span>
+        {/if}
+      {/if}
+      {#if ladder && settings.playback.ladder}
+        <span class="ladder">Escada: {ladderStreak}/3 voltas limpas · alvo {target} bpm</span>
+      {/if}
+      {#if ladderNote}<span class="ladder">{ladderNote}</span>{/if}
     </div>
   {/if}
 
@@ -737,6 +934,29 @@
   .warn {
     color: var(--warn);
     font-size: 0.9rem;
+  }
+  .hit.ok {
+    color: var(--ok);
+  }
+  .hit.off {
+    color: var(--warn);
+  }
+  .hit.bad {
+    color: var(--bad);
+  }
+  .ladder {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .target {
+    width: 4.5rem;
+    min-height: 2.5rem;
+    font: inherit;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
   }
   .expected.hidden {
     display: none;

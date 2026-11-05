@@ -31,6 +31,8 @@ export interface Settings {
     countIn: number;
     /** Metrônomo ligado no modo acompanhar. */
     metronome: boolean;
+    /** Escada de andamento no loop do modo acompanhar. */
+    ladder: boolean;
     /** O que o app toca no modo acompanhar. */
     listen: ListenMode;
     /** Andamento das partituras sem andamento escrito (semínimas por minuto). */
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
     speakerLatencyMs: null,
     countIn: 1,
     metronome: true,
+    ladder: false,
     listen: 'none',
     defaultBpm: 80,
     bpm: {},

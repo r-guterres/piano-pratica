@@ -13,6 +13,7 @@ const schedule: Schedule = {
     { t: 400, kind: 'cursor', position: 1 },
   ],
   bodyMs: 800,
+  expected: [],
 };
 
 const brief = (events: { t: number; kind: string }[]) => events.map((e) => `${e.kind}@${e.t}`);
@@ -51,7 +52,10 @@ describe('Sequencer', () => {
   });
 
   it('does not loop forever on an empty body', () => {
-    const seq = new Sequencer({ countIn: [], countInMs: 0, body: [], bodyMs: 0 }, true);
+    const seq = new Sequencer(
+      { countIn: [], countInMs: 0, body: [], bodyMs: 0, expected: [] },
+      true,
+    );
     expect(seq.pull(1000)).toEqual([]);
     expect(seq.done).toBe(true);
   });

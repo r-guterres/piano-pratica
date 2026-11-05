@@ -30,6 +30,7 @@ export class Player {
   #seq: Sequencer | null = null;
   #start = 0;
   #delay = 0;
+  #countInMs = 0;
   #timer: ReturnType<typeof setInterval> | undefined;
   #raf = 0;
   #visual: { at: number; e: VisualEvent }[] = [];
@@ -44,12 +45,18 @@ export class Player {
     return this.#seq !== null;
   }
 
+  /** Instante (performance.now) em que o início do trecho é ouvido, depois da contagem. */
+  get bodyOrigin(): number {
+    return this.#start + this.#delay + this.#countInMs;
+  }
+
   start(schedule: Schedule, loop: boolean): void {
     this.stop();
     this.#seq = new Sequencer(schedule, loop);
     const sinks = [this.#out.clicks, this.#out.notes].filter((s): s is Sink => s !== null);
     this.#delay = Math.max(0, ...sinks.map((s) => s.latencyMs));
     this.#start = performance.now() + LEAD_MS;
+    this.#countInMs = schedule.countInMs;
     this.#tick();
     this.#timer = setInterval(() => this.#tick(), TICK_MS);
     this.#raf = requestAnimationFrame(() => this.#frame());
@@ -102,6 +109,8 @@ export class Player {
     const now = performance.now();
     while (this.#visual.length && this.#visual[0]!.at <= now)
       this.#onVisual(this.#visual.shift()!.e);
+    // a tela pode ter parado (ou recomeçado) o Player dentro do callback
+    if (this.#seq !== seq) return;
     const end = seq.endMs;
     if (seq.done && end !== null && now >= this.#start + this.#delay + end) {
       this.stop();

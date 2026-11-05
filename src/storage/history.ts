@@ -7,6 +7,7 @@
 import type { ItemStats } from '../drills/priority';
 import type { PoolConfig } from '../drills/notes';
 import type { DrillSummary } from '../drills/readingDrill';
+import type { RhythmSummary } from '../practice/rhythm';
 import type { LoopRange, WaitModeSummary } from '../practice/waitMode';
 import type { HandSelection } from '../score/types';
 import { openDb, run, type RecordStore } from './db';
@@ -24,7 +25,17 @@ export interface ScoreSessionRecord {
   stepCount: number;
   /** true = chegou ao fim da peça; false = interrompida. */
   finished: boolean;
+  /**
+   * No modo acompanhar: completed = notas avaliadas, clean = no tempo,
+   * wrongNotes = erradas + perdidas, errorsByMeasure = problemas por compasso.
+   */
   summary: WaitModeSummary;
+  /** Modo da sessão (ausente = espera, registros anteriores ao M6). */
+  mode?: 'wait' | 'follow';
+  /** Andamento (modo acompanhar). */
+  bpm?: number;
+  /** Detalhes do ritmo (modo acompanhar). */
+  rhythm?: RhythmSummary;
 }
 
 export interface DrillRoundRecord {

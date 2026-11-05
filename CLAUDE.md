@@ -13,7 +13,8 @@ profissional: explique as decisões técnicas em poucas linhas.
 - **M3 (treino de leitura):** implementado; **aceito no tablet em 2026-11-05** (após a correção da lentidão pesando mais que o erro, 0a75ac6).
 - **M4 (persistência e acabamento):** implementado (IndexedDB, tela de progresso, PWA offline com aviso de versão nova, exportar JSON); **aceito no tablet em 2026-11-05** (instalado, offline, histórico persiste).
 - Todos os marcos do plano inicial (M0–M4) estão implementados.
-- **M5 (metrônomo e reprodução):** implementado; aguardando o teste de aceite no tablet.
+- **M5 (metrônomo e reprodução):** implementado; **aceito no tablet em 2026-11-05** (após a correção da tecla repetida, 6e4177f). O CTK-3500 toca a percussão GM no canal 10 e **não** devolve pela entrada as notas que recebe.
+- **Em andamento: M6.**
 
 ### Roteiro combinado em 2026-11-05 (M5–M9)
 

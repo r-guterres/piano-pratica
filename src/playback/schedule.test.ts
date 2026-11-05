@@ -192,6 +192,17 @@ describe('buildSchedule', () => {
     expect(s.bodyMs).toBe(12000);
   });
 
+  it('lists the notes the student must play, without ties', () => {
+    const s = buildSchedule(TWO_BARS, TWO_MEASURES, opts({ expect: 'right', metronome: false }));
+    expect(s.expected).toEqual([
+      { t: 0, pitch: 60, position: 0, measure: 0 },
+      { t: 1000, pitch: 62, position: 1, measure: 0 },
+      { t: 2000, pitch: 64, position: 2, measure: 0 },
+      { t: 4000, pitch: 65, position: 3, measure: 1 },
+    ]);
+    expect(buildSchedule(TWO_BARS, TWO_MEASURES, opts()).expected).toEqual([]);
+  });
+
   it('plays only the requested range', () => {
     const s = buildSchedule(TWO_BARS, TWO_MEASURES, opts({ from: 3, to: 3, play: 'right' }));
     expect(s.bodyMs).toBe(4000);
