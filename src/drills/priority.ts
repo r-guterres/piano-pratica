@@ -59,6 +59,18 @@ export class Prioritizer {
     this.stats.set(id, s);
   }
 
+  /** Cópia serializável das estatísticas (para salvar no IndexedDB). */
+  snapshot(): Record<string, ItemStats> {
+    return Object.fromEntries([...this.stats].map(([id, s]) => [id, { ...s }]));
+  }
+
+  /** Substitui as estatísticas pelas salvas (campos ausentes ganham o padrão). */
+  restore(saved: Record<string, Partial<ItemStats>> | null | undefined): void {
+    this.stats.clear();
+    for (const [id, s] of Object.entries(saved ?? {}))
+      this.stats.set(id, { attempts: 0, errors: 0, meanMs: null, timed: 0, seen: 0, ...s });
+  }
+
   errorRate(id: string): number {
     const s = this.stats.get(id);
     return ((s?.errors ?? 0) + PRIOR_ERRORS) / ((s?.attempts ?? 0) + PRIOR_ATTEMPTS);

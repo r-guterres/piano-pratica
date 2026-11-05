@@ -61,6 +61,25 @@ describe('Prioritizer', () => {
     expect(p.slowness('once')).toBeCloseTo(2 / 3);
   });
 
+  it('round-trips its statistics through a snapshot', () => {
+    const p = new Prioritizer();
+    p.record('a', false, null);
+    p.record('b', true, 1200);
+    const copy = new Prioritizer();
+    copy.restore(structuredClone(p.snapshot()));
+    expect(copy.stats).toEqual(p.stats);
+    expect(copy.weight('a')).toBeCloseTo(p.weight('a'));
+    // campos ausentes (versões antigas) ganham o padrão
+    copy.restore({ c: { attempts: 1, errors: 1 } });
+    expect(copy.stats.get('c')).toEqual({
+      attempts: 1,
+      errors: 1,
+      meanMs: null,
+      timed: 0,
+      seen: 0,
+    });
+  });
+
   it('smooths the reaction time', () => {
     const p = new Prioritizer();
     p.record('a', true, 1000);
