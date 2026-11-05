@@ -80,6 +80,7 @@
 
   function fmtDuration(ms: number): string {
     const min = Math.round(ms / 60_000);
+    if (ms > 0 && min === 0) return '<1 min';
     if (min < 60) return `${min} min`;
     return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
   }

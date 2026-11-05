@@ -7,6 +7,7 @@
   import Library, { type ScoreSource } from './ui/Library.svelte';
   import MidiMonitor from './ui/MidiMonitor.svelte';
   import ProgressScreen from './ui/ProgressScreen.svelte';
+  import { applyUpdate, initPwa, pwa } from './ui/pwa.svelte';
   import SettingsScreen from './ui/SettingsScreen.svelte';
   import { settings } from './ui/settings.svelte';
 
@@ -35,6 +36,13 @@
 
   onMount(() => {
     void autoConnectMidi();
+    initPwa();
+  });
+
+  $effect(() => {
+    if (!pwa.offlineReady) return;
+    const t = setTimeout(() => (pwa.offlineReady = false), 6000);
+    return () => clearTimeout(t);
   });
 
   // Só em `npm run dev`: permite simular notas pelo console/testes de navegador.
@@ -94,7 +102,36 @@
   </main>
 {/if}
 
+{#if pwa.needRefresh}
+  <div class="toast" role="status">
+    Há uma versão nova do app.
+    <button class="primary" onclick={() => applyUpdate()}>Atualizar</button>
+    <button onclick={() => (pwa.needRefresh = false)}>Depois</button>
+  </div>
+{:else if pwa.offlineReady}
+  <div class="toast" role="status">
+    Pronto para uso offline.
+    <button onclick={() => (pwa.offlineReady = false)}>OK</button>
+  </div>
+{/if}
+
 <style>
+  .toast {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    max-width: calc(100vw - 2rem);
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+  }
   header {
     display: flex;
     align-items: center;

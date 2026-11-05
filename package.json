@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run lint && npm run check && npm run test && npm run build",
-    "gen:scores": "node scripts/gen-scores.ts"
+    "gen:scores": "node scripts/gen-scores.ts",
+    "gen:icons": "node scripts/gen-icons.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
