@@ -4,7 +4,6 @@
   import { pitchName } from '../core/pitch';
   import { heldPitches } from '../input/held.svelte';
   import { inputHub } from '../input/hub';
-  import { Recorder } from '../input/recorder';
   import { midi } from '../input/midi.svelte';
   import { RhythmJudge, type RhythmEvent } from '../practice/rhythm';
   import { TempoLadder } from '../practice/tempoLadder';
@@ -31,6 +30,7 @@
   import type { HandSelection, MeasureInfo, TimelinePosition } from '../score/types';
   import type { ScoreSource } from './Library.svelte';
   import PianoKeyboard from './PianoKeyboard.svelte';
+  import RecordButton from './RecordButton.svelte';
   import SessionSummary from './SessionSummary.svelte';
   import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN, type ListenMode } from './settings.svelte';
 
@@ -169,65 +169,18 @@
       .finally(() => (loading = false));
   });
 
-  const unsubscribe = inputHub.subscribe((event) => {
-    recorder?.add(event);
-    handleInput(event);
-  });
-
-  // ---- gravação (teclas e pedal; ouvir e exportar em Progresso → Gravações) ----
-  let recorder = $state.raw<Recorder | null>(null);
-  let recordStart = 0;
-  let recordNote = $state('');
-  let recordClock = $state(0);
-  let recordTimer: ReturnType<typeof setInterval> | undefined;
-
-  function startRecording() {
-    recordStart = Date.now();
-    recorder = new Recorder(performance.now());
-    recordNote = '';
-    recordClock = 0;
-    recordTimer = setInterval(() => (recordClock = Date.now() - recordStart), 500);
-  }
-
-  function stopRecording() {
-    if (!recorder) return;
-    clearInterval(recordTimer);
-    const { events, durationMs } = recorder.stop(performance.now());
-    recorder = null;
-    if (!events.length) {
-      recordNote = 'Nada foi tocado: gravação descartada.';
-      return;
-    }
-    appHistory()
-      .saveRecording({
-        id: newId(),
-        createdAt: recordStart,
-        title,
-        scoreId: source.id,
-        durationMs,
-        events,
-      })
-      .then(() => (recordNote = 'Gravação salva: ouça em Progresso → Gravações.'))
-      .catch((err: unknown) => (recordNote = `Não consegui salvar a gravação: ${String(err)}`));
-  }
-
-  const clockText = (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  };
+  const unsubscribe = inputHub.subscribe((event) => handleInput(event));
 
   // o Android pode encerrar o app em segundo plano sem aviso: grava ao sair da tela
   // (e para o som: em segundo plano o relógio do navegador fica impreciso)
   const onHidden = () => {
     if (document.visibilityState !== 'hidden') return;
-    stopRecording();
     stopPlayback();
     persistSession();
   };
   document.addEventListener('visibilitychange', onHidden);
 
   onDestroy(() => {
-    stopRecording();
     stopPlayback();
     persistSession();
     document.removeEventListener('visibilitychange', onHidden);
@@ -337,7 +290,14 @@
           bodyMs: schedule.bodyMs,
           expected: schedule.expected,
         };
-      ladder = repeat && settings.playback.ladder ? new TempoLadder(ladderOptions()) : null;
+      if (repeat && settings.playback.ladder) {
+        // fixa o alvo na 1ª volta da escada: sem andamento escrito, o padrão
+        // (bpm + 20) subiria junto com o bpm a cada degrau
+        ladderTarget ??= target;
+        ladder = new TempoLadder(ladderOptions());
+      } else ladder = null;
+      shownLap = 0;
+      pendingColors = [];
       followRecord = {
         id: newId(),
         scoreId: source.id,
@@ -367,6 +327,19 @@
 
   const ladderOptions = () => ({ step: 5, needed: 3, target });
 
+  // A volta que a tela mostra muda no evento 'lap' do Player, que limpa as
+  // cores do trecho. Uma nota da volta seguinte tocada antes disso (no tempo,
+  // um pouco adiantada) fica guardada e é pintada logo depois da limpeza; uma
+  // da volta anterior avaliada depois (perdida, atrasada) só pisca.
+  let shownLap = 0;
+  let pendingColors: { lap: number; position: number; pitch: number; color: string }[] = [];
+
+  function paintNote(lap: number, position: number, pitch: number, color: string) {
+    if (lap > shownLap) pendingColors.push({ lap, position, pitch, color });
+    else if (lap < shownLap) view?.flash(position, [pitch], color);
+    else view?.colorNotes(position, [pitch], color);
+  }
+
   function hitText(e: Extract<RhythmEvent, { type: 'hit' }>): string {
     const ms = (e.offsetMs > 0 ? '+' : '') + Math.round(e.offsetMs) + ' ms';
     const label =
@@ -380,7 +353,7 @@
       switch (e.type) {
         case 'hit': {
           const ok = e.timing === 'ontime';
-          view.colorNotes(e.note.position, [e.note.pitch], ok ? COLOR.clean : COLOR.offtime);
+          paintNote(e.lap, e.note.position, e.note.pitch, ok ? COLOR.clean : COLOR.offtime);
           lastHit = { kind: ok ? 'ok' : 'off', text: hitText(e) };
           break;
         }
@@ -389,7 +362,7 @@
           lastHit = { kind: 'bad', text: '✗ tocou ' + name(e.pitch) };
           break;
         case 'missed':
-          view.colorNotes(e.note.position, [e.note.pitch], COLOR.missed);
+          paintNote(e.lap, e.note.position, e.note.pitch, COLOR.missed);
           break;
         case 'lapDone': {
           if (!ladder) break;
@@ -439,12 +412,16 @@
   function onVisual(e: VisualEvent) {
     if (judge) applyRhythm(judge.advance(performance.now()));
     if (e.kind === 'lap' && loop) {
-      // nova volta: limpa as cores do trecho
+      // nova volta: limpa as cores do trecho e pinta o que já foi tocado nela
+      shownLap = e.lap;
       const range = loopPositions(timeline, loop);
       if (range)
         view?.clearColors(
           Array.from({ length: range.to - range.from + 1 }, (_, k) => range.from + k),
         );
+      for (const c of pendingColors)
+        if (c.lap === shownLap) view?.colorNotes(c.position, [c.pitch], c.color);
+      pendingColors = pendingColors.filter((c) => c.lap > shownLap);
     }
     if (e.kind === 'cursor') view?.moveTo(e.position);
     else if (e.kind === 'click') {
@@ -763,6 +740,7 @@
         onclick={() =>
           restartPlayback(() => {
             settings.playback.ladder = !settings.playback.ladder;
+            ladderTarget = null;
             saveSettings();
           })}
         title="Sobe 5 bpm a cada 3 voltas limpas seguidas"
@@ -787,15 +765,7 @@
         </label>
       {/if}
     {/if}
-    <button
-      class="rec"
-      class:on={recorder !== null}
-      onclick={() => (recorder ? stopRecording() : startRecording())}
-      title="Grava o que você toca (teclas e pedal)"
-    >
-      {recorder ? `■ ${clockText(recordClock)}` : '● Gravar'}
-    </button>
-    {#if recordNote}<span class="muted">{recordNote}</span>{/if}
+    <RecordButton {title} scoreId={source.id} />
     {#if playWarning}<span class="warn">{playWarning}</span>{/if}
   </div>
 
@@ -1065,12 +1035,6 @@
     border: 1px solid var(--border);
     background: var(--surface-2);
     color: var(--text);
-  }
-  .rec.on {
-    background: var(--bad);
-    border-color: var(--bad);
-    color: #fff;
-    font-variant-numeric: tabular-nums;
   }
   .expected.hidden {
     display: none;

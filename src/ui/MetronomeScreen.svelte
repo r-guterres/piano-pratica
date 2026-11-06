@@ -5,6 +5,7 @@
   import { Player } from '../playback/player';
   import { beatGrid, metronomeSchedule } from '../playback/schedule';
   import { audioContext } from '../playback/sinks';
+  import RecordButton from './RecordButton.svelte';
   import { METRONOME_METERS, saveSettings, settings, type MetronomeMeter } from './settings.svelte';
 
   const BPM_MIN = 30;
@@ -125,6 +126,9 @@
   <button class="primary big" onclick={() => (playing ? stop() : start())}>
     {playing ? '■ Parar' : '▶ Iniciar'}
   </button>
+  <div class="row">
+    <RecordButton title="Exercício ({pb.metronomeBpm} bpm)" />
+  </div>
   {#if warning}<p class="warn">{warning}</p>{/if}
   <p class="muted small">
     Som {outputLabel}. Mude em Configurações → Som. Em 6/8 o clique marca as semínimas pontuadas.

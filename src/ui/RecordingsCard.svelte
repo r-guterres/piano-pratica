@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Gravações feitas no leitor: ouvir (pelo Casio ou pelo tablet, conforme as
-  // configurações de som), baixar como .mid e excluir.
+  // Gravações (do leitor, dos treinos, do metrônomo ou livres): ouvir (pelo
+  // Casio ou pelo tablet, conforme as configurações de som), baixar como .mid e
+  // excluir. O botão ● Gravar daqui faz uma gravação livre.
   import { onDestroy } from 'svelte';
   import { writeSmf } from '../midi/smf';
   import { makeOutputs } from '../playback/outputs';
@@ -9,6 +10,7 @@
   import { audioContext } from '../playback/sinks';
   import { appHistory, type RecordingInfo } from '../storage/history';
   import { dayKey } from '../storage/progress';
+  import RecordButton from './RecordButton.svelte';
 
   let list = $state<RecordingInfo[] | null>(null);
   let error = $state('');
@@ -80,13 +82,17 @@
 
 <section class="card">
   <h2>Gravações</h2>
+  <div class="free">
+    <RecordButton title="Gravação livre" onsaved={refresh} />
+    <span class="muted">grava qualquer coisa que você tocar, sem partitura</span>
+  </div>
   {#if error}<p class="warn">{error}</p>{/if}
   {#if list === null}
     <p class="muted">Carregando…</p>
   {:else if list.length === 0}
     <p class="muted">
-      Nenhuma gravação ainda. No leitor de partitura, toque em ● Gravar: ficam guardadas as teclas e
-      o pedal, para ouvir aqui ou baixar como .mid.
+      Nenhuma gravação ainda. Toque em ● Gravar aqui, no leitor de partitura, no metrônomo ou no
+      treino de pedal: ficam guardadas as teclas e o pedal, para ouvir aqui ou baixar como .mid.
     </p>
   {:else}
     <ul>
@@ -95,7 +101,8 @@
           <span class="info">
             <b>{r.title}</b>
             <span class="muted"
-              >{when(r.createdAt)} · {duration(r.durationMs)} · {r.notes} notas</span
+              >{when(r.createdAt)} · {duration(r.durationMs)} · {r.notes}
+              {r.notes === 1 ? 'nota' : 'notas'}</span
             >
           </span>
           <span class="actions">
@@ -112,6 +119,13 @@
 </section>
 
 <style>
+  .free {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
   ul {
     list-style: none;
     margin: 0;

@@ -64,8 +64,11 @@ export interface PedalSessionRecord {
   id: string;
   startedAt: number;
   durationMs: number;
-  /** Progressão sugerida (ex.: "C F G C"). */
+  /** Progressão pedida (ex.: "C F G C"), ou "livre". */
   progression: string;
+  /** Acordes conferidos e quantos estavam certos (ausente no modo livre e antes do 2026-11-05). */
+  chords?: number;
+  chordsOk?: number;
   /** Trocas de acorde avaliadas e quantas certas. */
   changes: number;
   ok: number;

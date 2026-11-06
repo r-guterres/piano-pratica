@@ -1,6 +1,8 @@
 <script lang="ts">
   // Treino de pedal sincopado: o aluno toca uma progressão (um acorde por
-  // compasso) e a cada troca o app diz se o pedal subiu e desceu na hora certa.
+  // compasso) e a cada troca o app diz se o pedal subiu e desceu na hora certa
+  // e se o acorde tocado era o pedido. No modo livre, qualquer acorde vale.
+  import { pitchName } from '../core/pitch';
   import { onDestroy } from 'svelte';
   import type { InputEvent } from '../core/events';
   import { inputHub } from '../input/hub';
@@ -8,10 +10,14 @@
   import { Player } from '../playback/player';
   import { metronomeSchedule } from '../playback/schedule';
   import { audioContext } from '../playback/sinks';
+  import { checkChord, nameChord, parseChord, type ChordCheck } from '../practice/chords';
   import { analyzePedal, chordAttacks, VERDICT_TEXT, type PedalVerdict } from '../practice/pedal';
   import { appHistory, newId } from '../storage/history';
+  import RecordButton from './RecordButton.svelte';
+  import { settings } from './settings.svelte';
 
-  const PROGRESSIONS = ['C F G C', 'C G Am F', 'C Am F G', 'Am Dm E Am'];
+  const FREE = 'livre';
+  const PROGRESSIONS = ['C F G C', 'C G Am F', 'C Am F G', 'Am Dm E Am', FREE];
   const WINDOW_MS = 8000;
 
   let progression = $state(PROGRESSIONS[0]!);
@@ -28,10 +34,34 @@
   let beat = $state<number | null>(null);
   let clock: ReturnType<typeof setInterval> | undefined;
 
-  const chords = $derived(progression.split(' '));
+  const free = $derived(progression === FREE);
+  const chords = $derived(free ? [] : progression.split(' '));
   const changes = $derived(analyzePedal(events, now));
-  const attacks = $derived(chordAttacks(events).length);
+  const played = $derived(chordAttacks(events));
+  const attacks = $derived(played.length);
   const nextChord = $derived(chords[attacks % chords.length]);
+  /** Conferência de cada acorde tocado (null no modo livre). */
+  const checks = $derived(
+    free
+      ? []
+      : played.map((a, k) => checkChord(parseChord(chords[k % chords.length]!)!, a.pitches)),
+  );
+  const chordsOk = $derived(checks.filter((c) => c.ok).length);
+  const lastPlayed = $derived(played.at(-1));
+
+  const noteName = (pc: number) => pitchName(60 + pc, settings.naming).replace(/-?\d+$/, '');
+  const playedName = (pitches: number[]) =>
+    nameChord(pitches) ?? pitches.map((p) => pitchName(p, settings.naming)).join(' ');
+  function checkText(c: ChordCheck): string {
+    if (c.ok) return '✓';
+    const parts = [];
+    if (c.missing.length) parts.push('faltou ' + c.missing.map(noteName).join(', '));
+    if (c.extra.length) parts.push('sobrou ' + c.extra.map(noteName).join(', '));
+    return '✗ ' + parts.join('; ');
+  }
+  /** Nome da troca na lista: o pedido ou, no modo livre, o que foi tocado. */
+  const label = (k: number) =>
+    free ? playedName(played[k]?.pitches ?? []) : chords[k % chords.length]!;
   const ok = $derived(changes.filter((c) => c.verdict === 'ok').length);
   const worst = $derived.by(() => {
     const counts: Partial<Record<PedalVerdict, number>> = {};
@@ -91,6 +121,7 @@
         changes: list.length,
         ok: verdicts.ok ?? 0,
         verdicts,
+        ...(free ? {} : { chords: checks.length, chordsOk }),
       })
       .then(() => (saved = 'Sessão salva no histórico.'))
       .catch((err: unknown) => console.warn('Não consegui salvar o treino de pedal:', err));
@@ -164,14 +195,18 @@
   <p class="muted">
     Toque um acorde por compasso. Na troca, <b
       >levante o pedal no instante em que tocar o novo acorde</b
-    > e pise de novo logo depois, com as teclas ainda presas. O app avalia cada troca.
+    >
+    e pise de novo logo depois, com as teclas ainda presas. O app avalia cada troca e confere os acordes
+    (em qualquer inversão); no modo <b>livre</b>, vale qualquer acorde.
   </p>
 
   <div class="row">
     <label>
       Progressão
       <select bind:value={progression} disabled={running}>
-        {#each PROGRESSIONS as p (p)}<option value={p}>{p}</option>{/each}
+        {#each PROGRESSIONS as p (p)}
+          <option value={p}>{p === FREE ? 'Livre (qualquer acorde)' : p}</option>
+        {/each}
       </select>
     </label>
     <label class="check">
@@ -189,6 +224,7 @@
     <button class="primary" onclick={() => (running ? stop() : start())}>
       {running ? '■ Encerrar' : '▶ Começar'}
     </button>
+    <RecordButton title={free ? 'Pedal (livre)' : `Pedal: ${progression}`} />
   </div>
 
   {#if running || events.length}
@@ -196,7 +232,14 @@
       {#each chords as c, i (i)}
         <span class="chord" class:next={running && i === attacks % chords.length}>{c}</span>
       {/each}
-      {#if running}<span class="muted">próximo: <b>{nextChord}</b></span>{/if}
+      {#if running && !free}<span class="muted">próximo: <b>{nextChord}</b></span>{/if}
+      {#if lastPlayed}
+        {@const check = checks.at(-1)}
+        <span class:bad={check && !check.ok} class:good={check?.ok}>
+          tocou <b>{playedName(lastPlayed.pitches)}</b>
+          {#if check}{checkText(check)}{/if}
+        </span>
+      {/if}
       {#if beat !== null}
         <span class="beats">
           {#each [0, 1, 2, 3] as i (i)}<i class:on={beat === i}></i>{/each}
@@ -240,12 +283,24 @@
         Trocas certas: <b>{ok}</b> de {changes.length} ({Math.round((100 * ok) / changes.length)}%)
         {#if worst}<span class="muted"> · mais comum: {VERDICT_TEXT[worst[0]]}</span>{/if}
       </p>
+      {#if !free && checks.length}
+        <p class="score">
+          Acordes certos: <b>{chordsOk}</b> de {checks.length}
+        </p>
+      {/if}
       <ol class="changes" reversed>
         {#each changes.slice(-8).toReversed() as c (c.index)}
           <li class:ok={c.verdict === 'ok'}>
-            <b>{chords[(c.index - 1) % chords.length]} → {chords[c.index % chords.length]}</b>:
+            <b>{label(c.index - 1)} → {label(c.index)}</b>: pedal
             {c.verdict === 'ok' ? '✓ certo' : `✗ ${VERDICT_TEXT[c.verdict]}`}
             <span class="muted">(subiu {ms(c.liftMs)}, desceu {ms(c.pressMs)})</span>
+            {#if checks[c.index] && !checks[c.index]!.ok}
+              <span class="chord-bad"
+                >· acorde {checkText(checks[c.index]!)} (tocou {playedName(
+                  played[c.index]!.pitches,
+                )})</span
+              >
+            {/if}
           </li>
         {/each}
       </ol>
@@ -359,5 +414,12 @@
   }
   .changes .muted {
     font-size: 0.85rem;
+  }
+  .changes li.ok .chord-bad,
+  .bad {
+    color: var(--bad);
+  }
+  .good {
+    color: var(--ok);
   }
 </style>
