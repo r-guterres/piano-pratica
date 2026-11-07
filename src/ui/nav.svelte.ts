@@ -8,7 +8,7 @@ import { showToast } from './toast.svelte';
 
 export type ScreenId =
   'today' | 'trail' | 'library' | 'drill' | 'metronome' | 'progress' | 'monitor' | 'settings';
-export type Training = 'reading' | 'pedal';
+export type Training = 'reading' | 'sight' | 'chords' | 'ear' | 'pedal';
 export type TrailView = 'phases' | 'repertoire';
 
 export const nav = $state<{

@@ -48,6 +48,17 @@
         <button class="small" onclick={() => go('drill', { training: 'reading' })}>
           Abrir treino de leitura
         </button>
+        <button class="small" onclick={() => go('drill', { training: 'sight' })}>
+          Ler e tocar
+        </button>
+      {:else if block.drill === 'chords'}
+        <button class="small" onclick={() => go('drill', { training: 'chords' })}>
+          Abrir treino de acordes
+        </button>
+      {:else if block.drill === 'ear'}
+        <button class="small" onclick={() => go('drill', { training: 'ear' })}>
+          Abrir treino de ouvido
+        </button>
       {/if}
       {#if block.topic === 'tp0'}
         <button class="small" onclick={() => go('drill', { training: 'pedal' })}>

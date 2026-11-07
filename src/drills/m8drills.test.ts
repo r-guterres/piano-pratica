@@ -134,3 +134,13 @@ describe('sight reading passages', () => {
     expect(passageMs(p, 60)).toBe(4000);
   });
 });
+
+it('names any interval', async () => {
+  const { intervalName } = await import('./earDrill');
+  expect([intervalName(1), intervalName(11), intervalName(12), intervalName(19)]).toEqual([
+    '2ª menor',
+    '7ª maior',
+    'oitava',
+    '5ª justa',
+  ]);
+});

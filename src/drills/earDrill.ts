@@ -180,3 +180,22 @@ export function answerFromKeys(q: EarQuestion, held: readonly MidiPitch[]): stri
   const degree = DEGREES.find(([, o, qq]) => o === offset && qq === (minor ? 'm' : 'M'));
   return degree ? degree[0] : '?';
 }
+
+const INTERVAL_NAMES = [
+  'uníssono',
+  '2ª menor',
+  '2ª maior',
+  '3ª menor',
+  '3ª maior',
+  '4ª justa',
+  'trítono',
+  '5ª justa',
+  '6ª menor',
+  '6ª maior',
+  '7ª menor',
+  '7ª maior',
+  'oitava',
+];
+
+/** Nome de um intervalo em semitons (até a oitava; acima, pela classe). */
+export const intervalName = (n: number) => INTERVAL_NAMES[n <= 12 ? n : n % 12]!;
