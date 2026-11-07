@@ -142,7 +142,8 @@ export function drillTrend(rounds: readonly DrillRoundRecord[]): RoundPoint[] {
 }
 
 export const EXPORT_FORMAT = 'piano-pratica/history';
-export const EXPORT_VERSION = 1;
+/** 2: + trail e diary (M7). */
+export const EXPORT_VERSION = 2;
 
 /** O arquivo JSON exportado (para analisar no computador). */
 export function toExportJson(

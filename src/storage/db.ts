@@ -2,11 +2,11 @@
 // banco e transformar requisições e transações em promessas.
 
 export const DB_NAME = 'piano-pratica';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /** Stores com chave `id` dentro do registro; `kv` guarda valores avulsos por chave. */
 export type RecordStore =
-  'scoreSessions' | 'drillRounds' | 'files' | 'pedalSessions' | 'recordings';
+  'scoreSessions' | 'drillRounds' | 'files' | 'pedalSessions' | 'recordings' | 'diary';
 export type StoreName = RecordStore | 'kv';
 
 export function openDb(factory: IDBFactory, name = DB_NAME): Promise<IDBDatabase> {
@@ -18,12 +18,14 @@ export function openDb(factory: IDBFactory, name = DB_NAME): Promise<IDBDatabase
       // cobre tanto um banco novo quanto a atualização de uma versão anterior.
       //   v1: scoreSessions, drillRounds, files, kv
       //   v2: pedalSessions, recordings (M6)
+      //   v3: diary (M7; o estado da Trilha fica no kv)
       const stores = [
         'scoreSessions',
         'drillRounds',
         'files',
         'pedalSessions',
         'recordings',
+        'diary',
       ] as const;
       for (const store of stores)
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' });

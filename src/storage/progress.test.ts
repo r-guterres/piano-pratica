@@ -71,6 +71,8 @@ const round = (startedAt: number, answered: number, firstTry: number): DrillRoun
 });
 
 const data = (over: Partial<HistoryData> = {}): HistoryData => ({
+  trail: null,
+  diary: [],
   scoreSessions: [],
   drillRounds: [],
   drillStats: {},
@@ -157,7 +159,7 @@ describe('progress', () => {
         commit: 'abc123',
       }),
     );
-    expect(json).toMatchObject({ format: EXPORT_FORMAT, version: 1, commit: 'abc123' });
+    expect(json).toMatchObject({ format: EXPORT_FORMAT, version: 2, commit: 'abc123' });
     expect(json.scoreSessions[0].summary.clean).toBe(3);
     expect(exportFileName(at(4))).toBe('piano-pratica-historico-2026-11-04.json');
   });

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { WaitModeSummary } from '../practice/waitMode';
 import { openDb } from './db';
 import { History, type ScoreSessionRecord } from './history';
+import { initialTrail } from '../trail/state';
 
 const fresh = () => new History(openDb(new IDBFactory()));
 
@@ -99,6 +100,37 @@ describe('History', () => {
     expect(await h.recordings()).toEqual([]);
   });
 
+  it('upgrades a version 2 database and keeps the trail state and the diary', async () => {
+    const factory = new IDBFactory();
+    await new Promise<void>((resolve, reject) => {
+      const req = factory.open('piano-pratica', 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        for (const s of ['scoreSessions', 'drillRounds', 'files', 'pedalSessions', 'recordings'])
+          db.createObjectStore(s, { keyPath: 'id' });
+        db.createObjectStore('kv').put({ old: true }, 'prioritizer');
+      };
+      req.onsuccess = () => {
+        req.result.close();
+        resolve();
+      };
+      req.onerror = () => reject(req.error);
+    });
+    const h = new History(openDb(factory));
+    expect(await h.drillStats()).toEqual({ old: true });
+    expect(await h.trail()).toBeNull();
+    const trail = initialTrail('2026-11-07');
+    await h.saveTrail(trail);
+    expect(await h.trail()).toEqual(trail);
+    await h.saveDiary({ id: '2026-11-07', text: 'Bom treino.', updatedAt: 1 });
+    await h.saveDiary({ id: '2026-11-06', text: 'Cansado.', updatedAt: 1 });
+    expect((await h.diary()).map((e) => e.id)).toEqual(['2026-11-06', '2026-11-07']);
+    expect((await h.diaryEntry('2026-11-07'))?.text).toBe('Bom treino.');
+    // apagar o texto apaga a entrada
+    await h.saveDiary({ id: '2026-11-07', text: '  ', updatedAt: 2 });
+    expect(await h.diaryEntry('2026-11-07')).toBeNull();
+  });
+
   it('keeps recordings and lists them without their events', async () => {
     const h = fresh();
     await h.saveRecording({
@@ -136,5 +168,7 @@ describe('History', () => {
     expect(data.drillRounds).toEqual([]);
     expect(data.drillStats).toEqual({});
     expect(data.files).toEqual([]);
+    expect(data.trail).toBeNull();
+    expect(data.diary).toEqual([]);
   });
 });

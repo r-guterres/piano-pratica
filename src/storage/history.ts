@@ -1,5 +1,6 @@
 // Histórico de prática no IndexedDB: sessões do modo espera, rodadas do treino
-// de leitura, estatísticas do Prioritizer e partituras importadas.
+// de leitura, estatísticas do Prioritizer, partituras importadas, o estado da
+// Trilha e o diário.
 //
 // Os registros são objetos simples (structured clone): não passar proxies do
 // Svelte ($state) direto; usar $state.snapshot antes.
@@ -12,6 +13,8 @@ import type { PedalVerdict } from '../practice/pedal';
 import type { RhythmSummary } from '../practice/rhythm';
 import type { LoopRange, WaitModeSummary } from '../practice/waitMode';
 import type { HandSelection } from '../score/types';
+import type { DiaryEntry } from '../trail/migrate';
+import type { TrailState } from '../trail/state';
 import { openDb, run, type RecordStore } from './db';
 
 export interface ScoreSessionRecord {
@@ -91,6 +94,7 @@ export type RecordingInfo = Omit<RecordingRecord, 'events'> & { notes: number };
 export type DrillStats = Record<string, ItemStats>;
 
 const PRIORITIZER_KEY = 'prioritizer';
+const TRAIL_KEY = 'trail';
 
 export class History {
   readonly #db: Promise<IDBDatabase>;
@@ -188,9 +192,35 @@ export class History {
     await run(await this.#db, 'recordings', 'readwrite', (s) => s.delete(id));
   }
 
+  async saveTrail(state: TrailState): Promise<void> {
+    await run(await this.#db, 'kv', 'readwrite', (s) => s.put(state, TRAIL_KEY));
+  }
+
+  async trail(): Promise<TrailState | null> {
+    const v = await run(await this.#db, 'kv', 'readonly', (s) => s.get(TRAIL_KEY));
+    return (v as TrailState | undefined) ?? null;
+  }
+
+  /** Grava a entrada do dia; texto vazio apaga. */
+  async saveDiary(entry: DiaryEntry): Promise<void> {
+    if (entry.text.trim()) return this.#put('diary', entry);
+    await run(await this.#db, 'diary', 'readwrite', (s) => s.delete(entry.id));
+  }
+
+  async diaryEntry(day: string): Promise<DiaryEntry | null> {
+    const v = await run(await this.#db, 'diary', 'readonly', (s) => s.get(day));
+    return (v as DiaryEntry | undefined) ?? null;
+  }
+
+  /** Do dia mais antigo ao mais novo. */
+  async diary(): Promise<DiaryEntry[]> {
+    const all = (await run(await this.#db, 'diary', 'readonly', (s) => s.getAll())) as DiaryEntry[];
+    return all.sort((a, b) => (a.id < b.id ? -1 : 1));
+  }
+
   /** Tudo o que vai para a exportação em JSON (arquivos e gravações sem o conteúdo). */
   async exportData(): Promise<HistoryData> {
-    const [scoreSessions, drillRounds, drillStats, files, pedalSessions, recordings] =
+    const [scoreSessions, drillRounds, drillStats, files, pedalSessions, recordings, trail, diary] =
       await Promise.all([
         this.scoreSessions(),
         this.drillRounds(),
@@ -198,6 +228,8 @@ export class History {
         this.files(),
         this.pedalSessions(),
         this.recordings(),
+        this.trail(),
+        this.diary(),
       ]);
     return {
       scoreSessions,
@@ -206,6 +238,8 @@ export class History {
       files,
       pedalSessions,
       recordings,
+      trail,
+      diary,
     };
   }
 }
@@ -217,6 +251,8 @@ export interface HistoryData {
   files: StoredFileInfo[];
   pedalSessions: PedalSessionRecord[];
   recordings: RecordingInfo[];
+  trail: TrailState | null;
+  diary: DiaryEntry[];
 }
 
 /** Id único para um registro (crypto.randomUUID exige HTTPS; `dev:lan` é HTTP). */
