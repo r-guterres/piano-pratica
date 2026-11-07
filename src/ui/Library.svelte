@@ -19,14 +19,11 @@
 
 <script lang="ts">
   import { appHistory, type StoredFileInfo } from '../storage/history';
+  import { entrySource, fileSource, libraryEntries } from './scores';
 
   let { onopen }: { onopen: (source: ScoreSource) => void } = $props();
 
-  const base = import.meta.env.BASE_URL;
-  const entries: Promise<ScoreEntry[]> = fetch(`${base}scores/index.json`).then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<ScoreEntry[]>;
-  });
+  const entries = libraryEntries();
 
   let files = $state<StoredFileInfo[]>([]);
   let filesError = $state('');
@@ -39,29 +36,8 @@
       );
   void refreshFiles();
 
-  function openEntry(e: ScoreEntry) {
-    onopen({
-      id: e.id,
-      title: e.title,
-      load: async () => {
-        const r = await fetch(`${base}scores/${e.file}`);
-        if (!r.ok) throw new Error(`Não consegui baixar ${e.file} (HTTP ${r.status})`);
-        return r.text();
-      },
-    });
-  }
-
-  function openStored(f: StoredFileInfo) {
-    onopen({
-      id: f.id,
-      title: f.title,
-      load: async () => {
-        const stored = await appHistory().file(f.id);
-        if (!stored) throw new Error(`O arquivo ${f.name} não está mais salvo`);
-        return new File([stored.data], stored.name);
-      },
-    });
-  }
+  const openEntry = (e: ScoreEntry) => onopen(entrySource(e));
+  const openStored = (f: StoredFileInfo) => onopen(fileSource(f));
 
   async function importFile(event: Event) {
     const input = event.currentTarget as HTMLInputElement;

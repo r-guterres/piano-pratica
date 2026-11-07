@@ -6,6 +6,7 @@
   import { metronomeSchedule } from '../playback/schedule';
   import { audioContext, estimatedSpeakerLatency, SpeakerSink } from '../playback/sinks';
   import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN } from './settings.svelte';
+  import TrailImport from './trail/TrailImport.svelte';
 
   const pb = settings.playback;
   const outputs = $derived(midi.outputs.filter((o) => o.state === 'connected'));
@@ -217,6 +218,8 @@
     </select>
   </label>
 </section>
+
+<TrailImport />
 
 <style>
   .row {

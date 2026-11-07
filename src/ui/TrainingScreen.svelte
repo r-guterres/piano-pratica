@@ -1,24 +1,22 @@
 <script lang="ts">
   // Aba "Treinos": escolhe entre o treino de leitura e o de pedal.
+  import { nav } from './nav.svelte';
   import PedalScreen from './PedalScreen.svelte';
-
-  type Training = 'reading' | 'pedal';
-  let training = $state<Training>('reading');
 
   // O treino de leitura (com o VexFlow e a fonte Bravura) só é baixado quando aberto.
   const loadDrill = () => import('./DrillScreen.svelte');
 </script>
 
 <div class="choose" role="group" aria-label="Treino">
-  <button class:active={training === 'reading'} onclick={() => (training = 'reading')}>
+  <button class:active={nav.training === 'reading'} onclick={() => (nav.training = 'reading')}>
     Leitura de notas
   </button>
-  <button class:active={training === 'pedal'} onclick={() => (training = 'pedal')}>
+  <button class:active={nav.training === 'pedal'} onclick={() => (nav.training = 'pedal')}>
     Pedal sincopado
   </button>
 </div>
 
-{#if training === 'reading'}
+{#if nav.training === 'reading'}
   {#await loadDrill()}
     <p class="loading">Carregando treino…</p>
   {:then { default: DrillScreen }}

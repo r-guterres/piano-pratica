@@ -51,3 +51,6 @@ export function dueText(today: Day, due: Day | null): string {
   if (k === 1) return 'amanhã';
   return `em ${k} dias`;
 }
+
+/** Hoje, no fuso do aparelho. */
+export const today = (): Day => ymd(new Date());

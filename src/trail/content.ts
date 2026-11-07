@@ -892,3 +892,53 @@ export const CHORDS_BY_PHASE: string[][] = [
     'Asus4',
   ],
 ];
+
+/** Partitura da biblioteca do app ligada à música, quando existe. */
+export const DEFAULT_SCORE: Record<string, string> = { minueto: 'minueto-sol' };
+
+export interface Link {
+  url: string;
+  text: string;
+  /** Escolhido a dedo (os outros são buscas já filtradas, que nunca quebram). */
+  recommended: boolean;
+}
+
+const youtubeSearch = (q: string) =>
+  'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
+
+/** Vídeo-aula e partitura de uma música. */
+export function songLinks(id: string): Link[] {
+  const M = SONGS[id];
+  if (!M) return [];
+  const q =
+    M.kind === 'pop' ? `${M.title} ${M.artist} piano tutorial` : `${M.title} piano tutorial`;
+  const video = CURATED_VIDEO[id];
+  const sheet =
+    M.kind === 'classical'
+      ? {
+          url: IMSLP[id] ?? 'https://imslp.org/index.php?search=' + encodeURIComponent(M.title),
+          text: 'Partitura grátis (IMSLP)',
+          recommended: false,
+        }
+      : {
+          url:
+            'https://musescore.com/sheetmusic?text=' +
+            encodeURIComponent(`${M.title} ${M.artist} easy piano`),
+          text: 'Partituras (MuseScore)',
+          recommended: false,
+        };
+  return [
+    video
+      ? { url: video, text: 'Vídeo recomendado', recommended: true }
+      : { url: youtubeSearch(q), text: 'Buscar vídeo-aula', recommended: false },
+    sheet,
+  ];
+}
+
+/** Vídeo-aula de um tópico. */
+export function topicLinks(id: string): Link[] {
+  const video = CURATED_VIDEO[id];
+  if (video) return [{ url: video, text: 'Vídeo recomendado', recommended: true }];
+  const q = VIDEO_SEARCH[id];
+  return q ? [{ url: youtubeSearch(q), text: 'Buscar vídeo-aula', recommended: false }] : [];
+}

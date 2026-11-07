@@ -13,6 +13,10 @@
   import RecordingsCard from './RecordingsCard.svelte';
   import TrendLine from './charts/TrendLine.svelte';
   import { settings } from './settings.svelte';
+  import { loadTrail, trail } from './trail.svelte';
+  import TrailProgress from './trail/TrailProgress.svelte';
+
+  void loadTrail();
 
   const DAYS_SHOWN = 14;
   const ROUNDS_SHOWN = 30;
@@ -109,6 +113,8 @@
     }
   }
 </script>
+
+{#if trail.s}<TrailProgress {data} />{/if}
 
 <section class="card">
   <div class="head">
