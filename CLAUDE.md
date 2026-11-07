@@ -15,7 +15,7 @@ profissional: explique as decisões técnicas em poucas linhas.
 - Todos os marcos do plano inicial (M0–M4) estão implementados.
 - **M5 (metrônomo e reprodução):** implementado; **aceito no tablet em 2026-11-05** (após a correção da tecla repetida, 6e4177f). O CTK-3500 toca a percussão GM no canal 10 e **não** devolve pela entrada as notas que recebe.
 - **M6 (ritmo, pedal e gravação):** implementado; **aceito no tablet em 2026-11-07** (após corrigir o alvo da escada e as cores na volta do loop, e acrescentar a conferência de acordes no pedal e a gravação livre, 611a504).
-- **M7 (a Trilha):** implementado; aguardando o teste de aceite no tablet e a migração dos dados do artefato.
+- **M7 (a Trilha):** implementado; **aceito no tablet em 2026-11-07**, com os dados do artefato migrados (o artefato deixa de ser usado; a Trilha agora vive no app).
 
 ### Roteiro combinado em 2026-11-05 (M5–M9)
 
