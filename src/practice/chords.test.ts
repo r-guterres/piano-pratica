@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { checkChord, nameChord, parseChord } from './chords';
+import {
+  checkChord,
+  checkInversion,
+  inversionVoicing,
+  nameChord,
+  noteLetter,
+  noteSolfege,
+  parseChord,
+  spellChord,
+} from './chords';
 
 describe('parseChord', () => {
   it('reads root, accidental and quality', () => {
@@ -45,5 +54,41 @@ describe('nameChord', () => {
   it('returns null for fewer than three notes or unknown sets', () => {
     expect(nameChord([60, 64])).toBeNull();
     expect(nameChord([60, 61, 62])).toBeNull();
+  });
+});
+
+describe('spellChord and inversions', () => {
+  it('spells chords with the right letters', () => {
+    const bbm = spellChord('Bbm')!;
+    expect([bbm.display, bbm.name, bbm.tones.map(noteLetter)]).toEqual([
+      'B♭m',
+      'Si♭ menor',
+      ['B♭', 'D♭', 'F'],
+    ]);
+    expect(spellChord('E7')!.tones.map(noteSolfege)).toEqual(['Mi', 'Sol♯', 'Si', 'Ré']);
+    expect(spellChord('Dsus2')!.tones.map(noteLetter)).toEqual(['D', 'E', 'A']);
+    expect(spellChord('Eb')!.tones.map(noteLetter)).toEqual(['E♭', 'G', 'B♭']);
+  });
+
+  it('builds a close voicing for each inversion', () => {
+    const c = spellChord('C')!;
+    expect(inversionVoicing(c, 0)).toEqual([48, 52, 55]);
+    expect(inversionVoicing(c, 1)).toEqual([52, 55, 60]);
+    expect(inversionVoicing(c, 2)).toEqual([55, 60, 64]);
+  });
+
+  it('checks the notes and the bass', () => {
+    const am = spellChord('Am')!;
+    // 1ª inversão: Dó no baixo
+    expect(checkInversion(am, 1, [60, 64, 69])).toEqual({ ok: true, notesOk: true, bassOk: true });
+    // notas certas, baixo errado (posição fundamental)
+    expect(checkInversion(am, 1, [57, 60, 64])).toEqual({
+      ok: false,
+      notesOk: true,
+      bassOk: false,
+    });
+    // com o baixo dobrado na ME
+    expect(checkInversion(am, 1, [48, 64, 69, 72]).ok).toBe(true);
+    expect(checkInversion(am, 1, [60, 65, 69]).notesOk).toBe(false);
   });
 });

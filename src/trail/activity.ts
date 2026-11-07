@@ -9,11 +9,16 @@ import { SONGS } from './content';
 import type { Day } from './dates';
 import { effectiveMinutes, GRADE_TEXT, type ReadingDay, type TrailState } from './state';
 
-export type Activity = Pick<HistoryData, 'scoreSessions' | 'drillRounds' | 'pedalSessions'>;
+export type Activity = Pick<
+  HistoryData,
+  'scoreSessions' | 'drillRounds' | 'pedalSessions' | 'exercises'
+>;
 
 /**
  * Pontos que vêm do app (somados aos da Trilha): 1 por nota lida de primeira
- * no treino de leitura, 1 por troca de pedal certa e 1 por minuto de partitura.
+ * no treino de leitura, 1 por troca de pedal certa, 1 por minuto de partitura,
+ * 1 por acorde certo de primeira, 1 por resposta certa no ouvido e, no ler e
+ * tocar, 2 por trecho certo e 1 pelos outros.
  */
 export function appPoints(data: Activity): Record<Pillar, number> {
   const out: Record<Pillar, number> = {
@@ -28,6 +33,10 @@ export function appPoints(data: Activity): Record<Pillar, number> {
   for (const p of data.pedalSessions) out.technique += p.ok;
   const scoreMs = data.scoreSessions.reduce((a, s) => a + s.summary.durationMs, 0);
   out.repertoire += Math.floor(scoreMs / 60_000);
+  for (const e of data.exercises)
+    if (e.kind === 'chords') out.harmony += e.firstTry;
+    else if (e.kind === 'ear') out.ear += e.correct;
+    else out.reading += 2 * e.correct + (e.answered - e.correct);
   return out;
 }
 
@@ -79,6 +88,19 @@ export function daySummary(s: TrailState, data: Activity, d: Day): string[] {
     const n = pedal.reduce((x, p) => x + p.changes, 0);
     out.push(`Pedal sincopado: ${ok} de ${n} trocas certas`);
   }
+  const EXERCISE: Record<string, string> = {
+    chords: 'Acordes',
+    ear: 'Ouvido',
+    sight: 'Ler e tocar',
+  };
+  const exercises: Record<string, { a: number; t: number }> = {};
+  for (const e of data.exercises.filter((x) => dayKey(x.startedAt) === d)) {
+    const x = (exercises[e.kind] ??= { a: 0, t: 0 });
+    x.a += e.correct;
+    x.t += e.answered;
+  }
+  for (const [kind, x] of Object.entries(exercises))
+    if (x.t) out.push(`${EXERCISE[kind]}: ${x.a} de ${x.t} certos (${pct(x.a, x.t)}%)`);
   for (const [id, m] of Object.entries(s.songs)) {
     const title = SONGS[id]?.title ?? id;
     for (const r of (m.logs ?? []).filter((r) => r.day === d))

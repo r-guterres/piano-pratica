@@ -28,12 +28,13 @@
 
   void loadTrail().then(async () => {
     const h = appHistory();
-    const [scoreSessions, drillRounds, pedalSessions] = await Promise.all([
+    const [scoreSessions, drillRounds, pedalSessions, exercises] = await Promise.all([
       h.scoreSessions().catch(() => []),
       h.drillRounds().catch(() => []),
       h.pedalSessions().catch(() => []),
+      h.exercises().catch(() => []),
     ]);
-    const a: Activity = { scoreSessions, drillRounds, pedalSessions };
+    const a: Activity = { scoreSessions, drillRounds, pedalSessions, exercises };
     activity = a;
     if (trail.s && autoReadingMilestone(trail.s, readingDays(a))) {
       saveTrail();

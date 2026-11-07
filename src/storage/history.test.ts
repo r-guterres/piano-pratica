@@ -170,5 +170,17 @@ describe('History', () => {
     expect(data.files).toEqual([]);
     expect(data.trail).toBeNull();
     expect(data.diary).toEqual([]);
+    expect(data.exercises).toEqual([]);
+    await h.saveExercise({
+      id: 'e1',
+      kind: 'ear',
+      mode: 'int',
+      startedAt: 1,
+      durationMs: 60_000,
+      answered: 10,
+      correct: 8,
+      firstTry: 8,
+    });
+    expect((await h.exportData()).exercises.map((e) => e.correct)).toEqual([8]);
   });
 });

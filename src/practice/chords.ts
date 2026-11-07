@@ -82,3 +82,111 @@ export function nameChord(pitches: readonly MidiPitch[]): string | null {
     }
   return null;
 }
+
+// ---- soletrar e inversões (treino de acordes) ----
+
+/** Graus (em letras acima da fundamental) de cada nota, por sufixo; mesma ordem dos intervalos. */
+const LETTER_STEPS: Record<string, number[]> = {
+  '': [0, 2, 4],
+  m: [0, 2, 4],
+  dim: [0, 2, 4],
+  aug: [0, 2, 4],
+  sus4: [0, 3, 4],
+  sus2: [0, 1, 4],
+  '7': [0, 2, 4, 6],
+  maj7: [0, 2, 4, 6],
+  m7: [0, 2, 4, 6],
+};
+const QUALITY_NAME: Record<string, string> = {
+  '': 'maior',
+  m: 'menor',
+  dim: 'diminuto',
+  aug: 'aumentado',
+  sus4: 'sus4',
+  sus2: 'sus2',
+  '7': 'com sétima',
+  maj7: 'com sétima maior',
+  m7: 'menor com sétima',
+};
+const LETTERS = 'CDEFGAB';
+const NATURAL_PC = [0, 2, 4, 5, 7, 9, 11];
+const SOLFEGE = ['Dó', 'Ré', 'Mi', 'Fá', 'Sol', 'Lá', 'Si'];
+
+export const INVERSION_NAMES = ['fundamental', '1ª inversão', '2ª inversão', '3ª inversão'];
+
+export interface SpelledNote {
+  /** 0 = Dó … 6 = Si */
+  letter: number;
+  /** −1 = ♭, +1 = ♯ */
+  alter: number;
+  pc: number;
+}
+
+export interface SpelledChord extends Chord {
+  /** Cifra com ♯/♭ ("B♭m"). */
+  display: string;
+  /** "Si♭ menor" */
+  name: string;
+  /** Notas na ordem fundamental, terça, quinta (sétima). */
+  tones: SpelledNote[];
+}
+
+const accidental = (a: number) => (a > 0 ? '♯'.repeat(a) : '♭'.repeat(-a));
+export const noteLetter = (n: SpelledNote) => LETTERS[n.letter]! + accidental(n.alter);
+export const noteSolfege = (n: SpelledNote) => SOLFEGE[n.letter]! + accidental(n.alter);
+
+/** "Bbm" → Si♭ menor, com as notas soletradas (Si♭, Ré♭, Fá). */
+export function spellChord(symbol: string): SpelledChord | null {
+  const chord = parseChord(symbol);
+  const m = /^([A-G])([#b♯♭]?)(.*)$/.exec(symbol.trim());
+  if (!chord || !m) return null;
+  const quality = QUALITIES.find(([s]) => s === m[3])!;
+  const steps = LETTER_STEPS[m[3]!]!;
+  const rootLetter = LETTERS.indexOf(m[1]!);
+  const tones = quality[1].map((semi, i): SpelledNote => {
+    const letter = (rootLetter + steps[i]!) % 7;
+    const pc = (chord.root + semi) % 12;
+    let alter = pc - NATURAL_PC[letter]!;
+    if (alter > 6) alter -= 12;
+    if (alter < -6) alter += 12;
+    return { letter, alter, pc };
+  });
+  const rootAlter = m[2] === '#' || m[2] === '♯' ? 1 : m[2] ? -1 : 0;
+  return {
+    ...chord,
+    display: m[1]! + accidental(rootAlter) + m[3],
+    name: `${SOLFEGE[rootLetter]}${accidental(rootAlter)} ${QUALITY_NAME[m[3]!]}`,
+    tones,
+  };
+}
+
+/** Uma posição fechada do acorde na inversão pedida, a partir de `base` (Dó3 = 48). */
+export function inversionVoicing(chord: SpelledChord, inv: number, base = 48): MidiPitch[] {
+  const order = [...chord.tones.slice(inv), ...chord.tones.slice(0, inv)];
+  const out = [base + order[0]!.pc];
+  for (const n of order.slice(1)) {
+    let p = base + n.pc;
+    while (p <= out.at(-1)!) p += 12;
+    out.push(p);
+  }
+  return out;
+}
+
+export interface InversionCheck {
+  ok: boolean;
+  /** As notas (classes de altura) são as do acorde, sem faltar nem sobrar. */
+  notesOk: boolean;
+  /** A nota mais grave é a pedida pela inversão. */
+  bassOk: boolean;
+}
+
+/** Confere um acorde numa inversão: as notas certas e a nota certa no baixo. */
+export function checkInversion(
+  chord: SpelledChord,
+  inv: number,
+  pitches: readonly MidiPitch[],
+): InversionCheck {
+  const notesOk = pitches.length > 0 && checkChord(chord, pitches).ok;
+  const bassOk = pitches.length > 0 && pitchClass(Math.min(...pitches)) === chord.tones[inv]!.pc;
+  return { ok: notesOk && bassOk, notesOk, bassOk };
+}

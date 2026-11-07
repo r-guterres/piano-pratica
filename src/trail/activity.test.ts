@@ -39,13 +39,35 @@ const data = {
   drillRounds: [round('2026-11-06', 40, 36), round('2026-11-07', 20, 19)],
   scoreSessions: [score('2026-11-07', 6 * 60_000), score('2026-11-07', 5 * 60_000, 'follow')],
   pedalSessions: [pedal('2026-11-07', 8, 6)],
+  exercises: [
+    {
+      id: 'x',
+      kind: 'chords' as const,
+      mode: 'fase 0',
+      startedAt: at('2026-11-07'),
+      durationMs: 1,
+      answered: 10,
+      correct: 9,
+      firstTry: 7,
+    },
+    {
+      id: 'y',
+      kind: 'sight' as const,
+      mode: 'both',
+      startedAt: at('2026-11-06'),
+      durationMs: 1,
+      answered: 5,
+      correct: 3,
+      firstTry: 1,
+    },
+  ],
 };
 
 describe('appPoints', () => {
   it('gives reading, technique and repertoire points from the app’s history', () => {
     expect(appPoints(data)).toEqual({
-      harmony: 0,
-      reading: 55,
+      harmony: 7,
+      reading: 55 + 2 * 3 + 2,
       ear: 0,
       technique: 6,
       repertoire: 11,
@@ -75,6 +97,7 @@ describe('daySummary', () => {
       'Treino de leitura: 1 rodada, 19 de 20 de primeira (95%)',
       'Partitura Minueto: 11 min (com o cursor no tempo)',
       'Pedal sincopado: 6 de 8 trocas certas',
+      'Acordes: 9 de 10 certos (90%)',
       'Let It Be: 65 bpm, 3 de 3 sem erro, travou em refrão',
     ]);
   });

@@ -91,6 +91,23 @@ export interface RecordingRecord {
 
 export type RecordingInfo = Omit<RecordingRecord, 'events'> & { notes: number };
 
+export type ExerciseKind = 'chords' | 'ear' | 'sight';
+
+/** Uma sessão de um treino do M8 (gravada de novo pelo id a cada resposta). */
+export interface ExerciseRecord {
+  id: string;
+  kind: ExerciseKind;
+  /** Ouvido: mm/int/degree; ler e tocar: treble/bass/alternate/both; acordes: "fase N". */
+  mode: string;
+  startedAt: number;
+  durationMs: number;
+  /** Perguntas (acordes, trechos) respondidas. */
+  answered: number;
+  correct: number;
+  /** Acordes: certos sem tentativa errada; ler e tocar: trechos todos no tempo. */
+  firstTry: number;
+}
+
 export type DrillStats = Record<string, ItemStats>;
 
 const PRIORITIZER_KEY = 'prioritizer';
@@ -201,6 +218,14 @@ export class History {
     return (v as TrailState | undefined) ?? null;
   }
 
+  saveExercise(r: ExerciseRecord): Promise<void> {
+    return this.#put('exercises', r);
+  }
+
+  exercises(): Promise<ExerciseRecord[]> {
+    return this.#all('exercises');
+  }
+
   /** Grava a entrada do dia; texto vazio apaga. */
   async saveDiary(entry: DiaryEntry): Promise<void> {
     if (entry.text.trim()) return this.#put('diary', entry);
@@ -220,17 +245,27 @@ export class History {
 
   /** Tudo o que vai para a exportação em JSON (arquivos e gravações sem o conteúdo). */
   async exportData(): Promise<HistoryData> {
-    const [scoreSessions, drillRounds, drillStats, files, pedalSessions, recordings, trail, diary] =
-      await Promise.all([
-        this.scoreSessions(),
-        this.drillRounds(),
-        this.drillStats(),
-        this.files(),
-        this.pedalSessions(),
-        this.recordings(),
-        this.trail(),
-        this.diary(),
-      ]);
+    const [
+      scoreSessions,
+      drillRounds,
+      drillStats,
+      files,
+      pedalSessions,
+      recordings,
+      trail,
+      diary,
+      exercises,
+    ] = await Promise.all([
+      this.scoreSessions(),
+      this.drillRounds(),
+      this.drillStats(),
+      this.files(),
+      this.pedalSessions(),
+      this.recordings(),
+      this.trail(),
+      this.diary(),
+      this.exercises(),
+    ]);
     return {
       scoreSessions,
       drillRounds,
@@ -240,6 +275,7 @@ export class History {
       recordings,
       trail,
       diary,
+      exercises,
     };
   }
 }
@@ -253,6 +289,7 @@ export interface HistoryData {
   recordings: RecordingInfo[];
   trail: TrailState | null;
   diary: DiaryEntry[];
+  exercises: ExerciseRecord[];
 }
 
 /** Id único para um registro (crypto.randomUUID exige HTTPS; `dev:lan` é HTTP). */
