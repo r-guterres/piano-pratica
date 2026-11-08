@@ -44,7 +44,11 @@ export interface PedalChange {
   liftMs: number | null;
   /** Pedal desceu de novo este tanto depois do acorde; null se não desceu. */
   pressMs: number | null;
+  /** O acorde repete a harmonia anterior (mesmas classes de altura): manter o pedal vale. */
+  sameChord: boolean;
 }
+
+const pitchClasses = (a: ChordAttack) => [...new Set(a.pitches.map((p) => p % 12))].sort().join();
 
 /** Acordes: grupos de note-ons próximos no tempo. */
 export function chordAttacks(events: readonly InputEvent[]): ChordAttack[] {
@@ -117,7 +121,10 @@ export function analyzePedal(events: readonly InputEvent[], now: Millis): PedalC
     else if (pressMs === null || pressMs > PRESS_LATE_MS) verdict = 'late-press';
     else if (pressMs <= PRESS_TOO_SOON_MS) verdict = 'early-press';
     else verdict = 'ok';
-    out.push({ index: k, from, to, verdict, liftMs, pressMs });
+    // mesma harmonia: segurar o pedal (ou pisar junto) não mistura nada
+    const sameChord = pitchClasses(from) === pitchClasses(to);
+    if (sameChord && (verdict === 'held' || verdict === 'early-press')) verdict = 'ok';
+    out.push({ index: k, from, to, verdict, liftMs, pressMs, sameChord });
   }
   return out;
 }

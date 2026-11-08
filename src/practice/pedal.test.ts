@@ -80,6 +80,39 @@ describe('analyzePedal', () => {
     expect(verdicts(progression([]))).toEqual(['no-pedal', 'no-pedal']);
   });
 
+  // Tablet: repetir o mesmo acorde não pede troca de pedal
+  it('accepts keeping the pedal down when the same chord is repeated', () => {
+    const repeat = (pedalEvents: InputEvent[]): InputEvent[] => [
+      ...chord(0, C),
+      ...release(1990, C),
+      ...chord(2000, [52, 60, 67]), // C de novo, em outra posição (Mi no baixo)
+      ...release(3990, [52, 60, 67]),
+      ...chord(4000, F),
+      ...pedalEvents,
+    ];
+    const held = analyzePedal(
+      repeat([pedal(200, true), pedal(4030, false), pedal(4250, true)]),
+      10_000,
+    );
+    expect(held.map((c) => [c.verdict, c.sameChord])).toEqual([
+      ['ok', true],
+      ['ok', false],
+    ]);
+    // trocar o pedal no acorde repetido também vale; pisar junto não prende outra harmonia
+    const changed = repeat([
+      pedal(200, true),
+      pedal(1995, false),
+      pedal(2005, true),
+      pedal(4030, false),
+      pedal(4250, true),
+    ]);
+    expect(verdicts(changed)).toEqual(['ok', 'ok']);
+    // mas um buraco no som continua sendo erro, e sem pedal nenhum também
+    const gap = repeat([pedal(200, true), pedal(1500, false), pedal(2200, true)]);
+    expect(verdicts(gap)[0]).toBe('early-lift');
+    expect(verdicts(repeat([]))[0]).toBe('no-pedal');
+  });
+
   it('waits before judging the last change', () => {
     const ev = progression([pedal(200, true), pedal(2010, false), pedal(2200, true)]);
     // em 4100 a troca para o G ainda não está decidida

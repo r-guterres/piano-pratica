@@ -292,7 +292,11 @@
         {#each changes.slice(-8).toReversed() as c (c.index)}
           <li class:ok={c.verdict === 'ok'}>
             <b>{label(c.index - 1)} → {label(c.index)}</b>: pedal
-            {c.verdict === 'ok' ? '✓ certo' : `✗ ${VERDICT_TEXT[c.verdict]}`}
+            {c.verdict === 'ok'
+              ? c.sameChord && c.liftMs === null
+                ? '✓ mesmo acorde, pedal mantido'
+                : '✓ certo'
+              : `✗ ${VERDICT_TEXT[c.verdict]}`}
             <span class="muted">(subiu {ms(c.liftMs)}, desceu {ms(c.pressMs)})</span>
             {#if checks[c.index] && !checks[c.index]!.ok}
               <span class="chord-bad"
