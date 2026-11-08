@@ -203,7 +203,8 @@ function noteEvents(
     for (const n of pos.notes) {
       if (!struck(n, opt.play)) continue;
       const list = byPitch.get(n.pitch) ?? [];
-      list.push({ on: toMs(pos.perfTime), off: toMs(pos.perfTime + n.duration) });
+      const sounding = n.duration * (n.gate ?? 1); // staccato: soa só uma parte
+      list.push({ on: toMs(pos.perfTime), off: toMs(pos.perfTime + sounding) });
       byPitch.set(n.pitch, list);
     }
   const out: PlaybackEvent[] = [];

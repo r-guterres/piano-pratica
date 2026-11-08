@@ -109,6 +109,22 @@ describe('extractTimeline (OSMD)', () => {
     });
   });
 
+  // Bug do tablet (Bartók, "Long and Short"): as notas em staccato soavam ligadas
+  it('reads staccato and staccatissimo as shorter sounding notes', async () => {
+    const art = (step: string, mark: string) =>
+      `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>` +
+      (mark ? `<notations><articulations><${mark}/></articulations></notations>` : '') +
+      '</note>';
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1"><part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list>
+<part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+${art('C', 'staccato')}${art('D', 'staccatissimo')}${art('E', 'tenuto')}${art('F', '')}</measure>
+</part></score-partwise>`;
+    const tl = extractTimeline(await loadSheet(xml));
+    expect(tl.map((p) => p.notes[0]!.gate)).toEqual([0.5, 0.25, undefined, undefined]);
+    expect(tl.map((p) => p.notes[0]!.duration)).toEqual([0.25, 0.25, 0.25, 0.25]);
+  });
+
   it('reads the meter and no tempo when the score has none', async () => {
     const sheet = await loadSheet(readFileSync('public/scores/minueto-sol.musicxml', 'utf8'));
     expect(extractMeasures(sheet)[1]).toMatchObject({ beats: 3, beatType: 4, tempo: null });

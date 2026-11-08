@@ -14,6 +14,8 @@ export interface TimelineNote {
   grace: boolean;
   /** Quanto a nota soa, em semibreves (no início de uma ligadura, a soma das notas ligadas). */
   duration: number;
+  /** Fração da duração que soa na reprodução (staccato 0,5; staccatissimo 0,25); ausente = toda. */
+  gate?: number;
 }
 
 /**

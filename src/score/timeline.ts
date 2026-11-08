@@ -8,6 +8,13 @@ import type { Hand, MeasureInfo, TimelineNote, TimelinePosition } from './types'
 // No OSMD, halfTone 48 = Dó4; em MIDI, Dó4 = 60.
 const HALFTONE_TO_MIDI = 12;
 const CLEF_F = 1; // ClefEnum.F
+// ArticulationEnum → fração da nota que soa (o resto é silêncio)
+const GATES: Record<number, number> = {
+  6: 0.5, // staccato
+  7: 0.25, // staccatissimo
+  8: 0.5, // spiccato
+  25: 0.75, // detachedlegato (portato)
+};
 
 /** Mão de cada pauta: em instrumento de 2+ pautas, a de cima é MD; pauta única segue a clave. */
 export function staffHands(sheet: MusicSheet): Map<number, Hand> {
@@ -36,11 +43,15 @@ export function extractTimeline(sheet: MusicSheet): TimelinePosition[] {
   while (!iterator.EndReached) {
     const notes: TimelineNote[] = [];
     for (const ve of iterator.CurrentVoiceEntries) {
+      const gates = ve.Articulations.map((a) => GATES[a.articulationEnum] ?? 1);
+      const gate = Math.min(1, ...gates);
       for (const note of ve.Notes) {
         if (note.isRest() || !note.PrintObject) continue;
         const staff = note.ParentStaff.idInMusicSheet;
         const tie = note.NoteTie;
         notes.push({
+          // a articulação vale para o acorde todo; numa nota ligada, não encurta
+          ...(gate < 1 && !tie ? { gate } : {}),
           pitch: note.halfTone + HALFTONE_TO_MIDI,
           hand: hands.get(staff) ?? 'right',
           staff,

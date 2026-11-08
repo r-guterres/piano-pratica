@@ -111,6 +111,17 @@ describe('buildSchedule', () => {
     expect(times(only(s.body, 'off'))).toEqual([3000, 4000]);
   });
 
+  it('plays staccato notes shorter than written', () => {
+    const t = tl(
+      [0, 0, 0, [note(60, 0.25, { gate: 0.5 })]],
+      [0, 0.25, 0.25, [note(60, 0.25, { gate: 0.5 })]],
+      [0, 0.5, 0.5, [note(62, 0.5)]],
+    );
+    const s = buildSchedule(t, [measure(0, 0)], opts({ play: 'both', metronome: false }));
+    expect(only(s.body, 'on').map((e) => e.t)).toEqual([0, 1000, 2000]);
+    expect(only(s.body, 'off').map((e) => e.t)).toEqual([500, 1500, 4000]);
+  });
+
   it('cuts a note short when the same key is struck again', () => {
     const t = tl([0, 0, 0, [note(60, 1)]], [0, 0.25, 0.25, [note(60, 0.25)]]);
     const s = buildSchedule(t, [measure(0, 0)], opts({ play: 'both', metronome: false }));
