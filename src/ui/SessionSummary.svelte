@@ -82,8 +82,6 @@
       <p>Nenhum erro. 🎉</p>
     {/if}
 
-    <p class="muted small">O histórico das sessões passa a ser salvo no M4.</p>
-
     <div class="actions">
       <button class="primary" onclick={onrestart}>Praticar de novo</button>
       <button onclick={onclose}>{finished ? 'Fechar' : 'Continuar'}</button>
@@ -155,9 +153,6 @@
   .mistakes li {
     margin: 0.2rem 0;
     font-size: 0.9rem;
-  }
-  .small {
-    font-size: 0.8rem;
   }
   .actions {
     display: flex;

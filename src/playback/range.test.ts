@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelinePosition } from '../score/types';
-import { loopPositions, measureStart } from './range';
+import { loopPositions, measureStart, measureStep } from './range';
 
 /** [compasso, tempo escrito, tempo de execução] por posição. */
 const tl = (...rows: [number, number, number][]): TimelinePosition[] =>
@@ -23,6 +23,23 @@ describe('measureStart', () => {
     expect(measureStart(T, 3)).toBe(2);
     expect(measureStart(T, 5)).toBe(4);
     expect(measureStart(T, 6)).toBe(6);
+  });
+});
+
+describe('measureStep', () => {
+  it('jumps to the start of the next measure, each repeat pass counting as one', () => {
+    expect([0, 1, 2, 3, 4, 5].map((p) => measureStep(T, p, 1))).toEqual([2, 2, 4, 4, 6, 6]);
+    expect(measureStep(T, 6, 1)).toBe(6); // último compasso: fica
+    const end = tl([0, 0, 0], [1, 1, 1], [1, 1.5, 1.5]);
+    expect(measureStep(end, 1, 1)).toBe(1); // não vai para a última nota
+  });
+
+  it('goes back to the start of the measure, or of the previous one when already there', () => {
+    expect(measureStep(T, 3, -1)).toBe(2);
+    expect(measureStep(T, 2, -1)).toBe(0);
+    expect(measureStep(T, 4, -1)).toBe(2); // da 2ª passagem para a 1ª
+    expect(measureStep(T, 6, -1)).toBe(4);
+    expect(measureStep(T, 0, -1)).toBe(0);
   });
 });
 

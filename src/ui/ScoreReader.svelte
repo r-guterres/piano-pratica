@@ -15,7 +15,7 @@
   } from '../practice/waitMode';
   import { makeOutputs } from '../playback/outputs';
   import { Player, type VisualEvent } from '../playback/player';
-  import { loopPositions, measureStart } from '../playback/range';
+  import { loopPositions, measureStart, measureStep } from '../playback/range';
   import {
     beatGrid,
     buildSchedule,
@@ -31,6 +31,7 @@
   import type { ScoreSource } from './Library.svelte';
   import PianoKeyboard from './PianoKeyboard.svelte';
   import RecordButton from './RecordButton.svelte';
+  import FollowSummary, { type FollowResult } from './FollowSummary.svelte';
   import SessionSummary from './SessionSummary.svelte';
   import { saveSettings, settings, ZOOM_MAX, ZOOM_MIN, type ListenMode } from './settings.svelte';
 
@@ -188,11 +189,29 @@
     view?.destroy();
   });
 
-  /** Navegação manual (◀ ▶ / setas): pula passos sem tocar. */
-  function goStep(delta: number) {
-    if (!mode || !view) return;
-    const from = mode.current?.index ?? mode.range.last + 1;
-    mode.jumpTo(from + delta);
+  /** Navegação manual (◀ ▶ / setas): vai ao início do compasso seguinte ou anterior. */
+  function goMeasure(delta: 1 | -1) {
+    if (!view || !timeline.length) return;
+    if (practice === 'follow') {
+      const target = measureStep(timeline, view.position, delta);
+      if (playing) restartPlayback(() => view?.moveTo(target));
+      else view.moveTo(target);
+      return;
+    }
+    if (!mode) return;
+    const cur = mode.current?.index ?? steps.length;
+    let pos = mode.current?.position ?? view.position;
+    // o compasso pode não ter notas da mão escolhida: segue até achar um passo
+    for (;;) {
+      const q = measureStep(timeline, pos, delta);
+      const i = stepAtOrAfter(steps, q);
+      const moved = i >= 0 && (delta > 0 ? i > cur : i < cur);
+      if (moved || q === pos) {
+        if (moved) mode.jumpTo(i);
+        break;
+      }
+      pos = q;
+    }
     lastWrong = null;
     tick++;
     if (mode.current) view.moveTo(mode.current.position);
@@ -268,8 +287,12 @@
       schedule = metronomeSchedule(bpm / 4 / unit, measure.beats, measure.beatType);
       repeat = true;
     }
+    if (follow) {
+      followFrom = schedule.body.find((e) => e.kind === 'cursor')?.position ?? position;
+      showFollowSummary = false;
+    }
     player = new Player(out, onVisual, () => {
-      finishFollow();
+      finishFollow(true);
       playing = false;
       beat = null;
     });
@@ -322,6 +345,17 @@
   let ladderTarget = $state<number | null>(null);
   let followRecord: Omit<ScoreSessionRecord, 'finished' | 'summary' | 'rhythm'> | null = null;
   const rhythm = $derived.by(() => (void rhythmTick, judge?.summary() ?? null));
+  /** A última execução avaliada (para o resumo) e de onde ela começou. */
+  let followResult = $state.raw<FollowResult | null>(null);
+  let showFollowSummary = $state(false);
+  let followFrom = 0;
+
+  /** "Tocar de novo": volta ao início da última execução e toca. */
+  function replayFollow() {
+    showFollowSummary = false;
+    view?.moveTo(followFrom);
+    startPlayback();
+  }
   const ladderStreak = $derived.by(() => (void rhythmTick, ladder?.streak ?? 0));
   const target = $derived(ladderTarget ?? writtenBpm ?? bpm + 20);
 
@@ -379,8 +413,11 @@
     rhythmTick++;
   }
 
-  /** Encerra a avaliação e grava a sessão do modo acompanhar. */
-  function finishFollow() {
+  /**
+   * Encerra a avaliação e grava a sessão do modo acompanhar. `ended`: a
+   * reprodução chegou ao fim sozinha (mostra o resumo).
+   */
+  function finishFollow(ended = false) {
     if (!judge || !followRecord) return;
     applyRhythm(judge.advance(performance.now()));
     const r = judge.summary();
@@ -390,6 +427,14 @@
     rhythmTick++;
     const played = r.ontime + r.early + r.late;
     if (r.notes === 0 && r.wrong === 0 && played === 0) return;
+    followResult = {
+      rhythm: r,
+      bpm: record.bpm ?? bpm,
+      durationMs: Math.max(0, Date.now() - record.startedAt),
+      looping: record.loop !== null,
+      finished: ended,
+    };
+    if (ended) showFollowSummary = true;
     appHistory()
       .saveScoreSession({
         ...record,
@@ -594,11 +639,11 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (summary) return;
+    if (summary || showFollowSummary) return;
     if (e.target instanceof HTMLElement && e.target.closest('input, select, textarea')) return;
     if (e.key === ' ') togglePlayback();
-    else if (e.key === 'ArrowRight') goStep(1);
-    else if (e.key === 'ArrowLeft') goStep(-1);
+    else if (e.key === 'ArrowRight') goMeasure(1);
+    else if (e.key === 'ArrowLeft') goMeasure(-1);
     else if (e.key === 'PageDown') view?.turnPage(1);
     else if (e.key === 'PageUp') view?.turnPage(-1);
     else return;
@@ -627,7 +672,12 @@
     <span class="title" {title}>{title}</span>
 
     <span class="group">
-      <button onclick={() => goStep(-1)} aria-label="Passo anterior" disabled={!mode}>◀</button>
+      <button
+        onclick={() => goMeasure(-1)}
+        aria-label="Compasso anterior"
+        title="Início do compasso (ou do anterior)"
+        disabled={!mode}>◀</button
+      >
       <span class="counter">
         {#if practice === 'follow'}
           c.{(vs?.measure ?? 0) + 1}
@@ -639,7 +689,12 @@
           —
         {/if}
       </span>
-      <button onclick={() => goStep(1)} aria-label="Próximo passo" disabled={!mode}>▶</button>
+      <button
+        onclick={() => goMeasure(1)}
+        aria-label="Próximo compasso"
+        title="Início do próximo compasso"
+        disabled={!mode}>▶</button
+      >
     </span>
 
     <span class="group segmented" role="group" aria-label="Mão">
@@ -662,7 +717,15 @@
         Difíceis
       </button>
       <button onclick={startSession} title="Recomeçar a sessão" aria-label="Recomeçar">⟲</button>
-      <button onclick={() => mode && (summary = mode.summary())} disabled={!mode}>Resumo</button>
+      {#if practice === 'follow'}
+        <button
+          onclick={() => (showFollowSummary = true)}
+          disabled={!followResult}
+          title="Resumo da última execução">Resumo</button
+        >
+      {:else}
+        <button onclick={() => mode && (summary = mode.summary())} disabled={!mode}>Resumo</button>
+      {/if}
     </span>
 
     <span class="group">
@@ -898,6 +961,14 @@
     looping={mode.looping}
     onrestart={startSession}
     onclose={() => (summary = null)}
+  />
+{/if}
+
+{#if showFollowSummary && followResult}
+  <FollowSummary
+    result={followResult}
+    onrestart={replayFollow}
+    onclose={() => (showFollowSummary = false)}
   />
 {/if}
 
