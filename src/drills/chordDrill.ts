@@ -1,17 +1,55 @@
 // Treino de acordes: o app pede um acorde numa inversão ("Am, 1ª inversão")
 // e confere pelo MIDI as notas presas (as notas do acorde e a nota certa no
-// baixo). Os acordes vêm da fase da Trilha. Puro.
+// baixo). Os acordes vêm da fase da Trilha (sorteados, em inversão sorteada)
+// ou de um exercício do tópico (uma progressão em ordem, com o baixo escrito
+// na cifra, "F/C", ou em qualquer inversão). Puro.
 
 import type { MidiPitch } from '../core/events';
-import { checkInversion, spellChord, type SpelledChord } from '../practice/chords';
+import { checkInversion, noteLetter, spellChord, type SpelledChord } from '../practice/chords';
 import type { Rng } from './priority';
 
 export interface ChordQuestion {
+  /** Cifra sem o baixo ("F"). */
   symbol: string;
   chord: SpelledChord;
-  /** 0 = fundamental, 1 = 1ª inversão… */
-  inv: number;
+  /** 0 = fundamental, 1 = 1ª inversão…; null = qualquer inversão (o baixo não é conferido). */
+  inv: number | null;
+  /** Cifra mostrada, com o baixo quando a inversão importa ("F/C"). */
+  label: string;
+  /** Posição na lista (na progressão, o acorde da vez). */
+  index: number;
 }
+
+export interface ChordDrillOptions {
+  /** Sorteados (sem repetir o anterior) ou em ordem, recomeçando no fim. */
+  order?: 'random' | 'sequence';
+  /**
+   * random: inversão sorteada; written: a da cifra ("F/C" = Dó no baixo; sem
+   * barra = fundamental); any: qualquer inversão.
+   */
+  inversions?: 'random' | 'written' | 'any';
+}
+
+interface Item {
+  symbol: string;
+  chord: SpelledChord;
+  /** Inversão pedida pela barra da cifra (written); -1 se a nota do baixo não é do acorde. */
+  written: number;
+}
+
+const flat = (s: string) => s.replace('b', '♭').replace('#', '♯');
+
+function parseItem(text: string): Item | null {
+  const [symbol, bass] = text.trim().split('/');
+  const chord = spellChord(symbol!);
+  if (!chord) return null;
+  const written = bass ? chord.tones.findIndex((n) => noteLetter(n) === flat(bass)) : 0;
+  return written < 0 ? null : { symbol: symbol!, chord, written };
+}
+
+/** Cifra com o baixo da inversão ("F/C"); a fundamental e "qualquer" ficam sem barra. */
+export const questionLabel = (chord: SpelledChord, inv: number | null) =>
+  inv ? `${chord.display}/${noteLetter(chord.tones[inv]!)}` : chord.display;
 
 export type ChordAnswer =
   /** acertou (notas e baixo) */
@@ -34,7 +72,9 @@ export interface ChordDrillStats {
 }
 
 export class ChordDrill {
-  readonly #symbols: readonly string[];
+  readonly #items: readonly Item[];
+  readonly #order: 'random' | 'sequence';
+  readonly #inversions: 'random' | 'written' | 'any';
   readonly #rng: Rng;
   #q: ChordQuestion;
   #missed = false;
@@ -46,12 +86,27 @@ export class ChordDrill {
   /** Teclas do acorde anterior ainda presas ao passar para o próximo: ignorar até soltar tudo. */
   #waitRelease = false;
   readonly stats: ChordDrillStats = { correct: 0, firstTry: 0, skipped: 0, answered: 0 };
+  /** Acordes que não saíram de primeira (cifra mostrada → vezes). */
+  readonly trouble: Record<string, number> = {};
 
-  constructor(symbols: readonly string[], rng: Rng = Math.random) {
-    this.#symbols = symbols.filter((s) => spellChord(s));
-    if (!this.#symbols.length) throw new Error('Nenhum acorde reconhecido');
+  constructor(symbols: readonly string[], rng: Rng = Math.random, opts: ChordDrillOptions = {}) {
+    this.#items = symbols.map(parseItem).filter((x): x is Item => x !== null);
+    if (!this.#items.length) throw new Error('Nenhum acorde reconhecido');
+    this.#order = opts.order ?? 'random';
+    this.#inversions = opts.inversions ?? 'random';
     this.#rng = rng;
     this.#q = this.#draw(null);
+  }
+
+  /** As cifras da lista, na ordem (para mostrar a progressão). */
+  get labels(): string[] {
+    return this.#items.map((it) =>
+      questionLabel(it.chord, this.#inversions === 'written' ? it.written : null),
+    );
+  }
+
+  get order(): 'random' | 'sequence' {
+    return this.#order;
   }
 
   get question(): ChordQuestion {
@@ -63,12 +118,21 @@ export class ChordDrill {
     return this.#done;
   }
 
-  #draw(previous: string | null): ChordQuestion {
-    let symbol: string;
-    do symbol = this.#symbols[Math.floor(this.#rng() * this.#symbols.length)]!;
-    while (symbol === previous && this.#symbols.length > 1);
-    const chord = spellChord(symbol)!;
-    return { symbol, chord, inv: Math.floor(this.#rng() * chord.tones.length) };
+  #draw(previous: ChordQuestion | null): ChordQuestion {
+    const n = this.#items.length;
+    let index: number;
+    if (this.#order === 'sequence') index = previous ? (previous.index + 1) % n : 0;
+    else
+      do index = Math.floor(this.#rng() * n);
+      while (n > 1 && previous && this.#items[index]!.symbol === previous.symbol);
+    const { symbol, chord, written } = this.#items[index]!;
+    const inv =
+      this.#inversions === 'any'
+        ? null
+        : this.#inversions === 'written'
+          ? written
+          : Math.floor(this.#rng() * chord.tones.length);
+    return { symbol, chord, inv, index, label: questionLabel(chord, inv) };
   }
 
   /** As teclas da última tentativa (para mostrar o que foi tocado depois de soltar). */
@@ -91,12 +155,13 @@ export class ChordDrill {
     if (this.#done || held.length < this.#q.chord.tones.length) return null;
     this.#judged = true;
     this.#lastAttempt = [...held].sort((a, b) => a - b);
-    const r = checkInversion(this.#q.chord, this.#q.inv, held);
-    if (r.ok) {
+    const r = checkInversion(this.#q.chord, this.#q.inv ?? 0, held);
+    if (r.ok || (this.#q.inv === null && r.notesOk)) {
       this.#done = true;
       this.stats.correct++;
       this.stats.answered++;
       if (!this.#missed) this.stats.firstTry++;
+      else this.#addTrouble();
       return 'correct';
     }
     this.#missed = true;
@@ -120,10 +185,15 @@ export class ChordDrill {
     this.#missed = true;
   }
 
+  #addTrouble(): void {
+    this.trouble[this.#q.label] = (this.trouble[this.#q.label] ?? 0) + 1;
+  }
+
   skip(held: readonly MidiPitch[] = []): void {
     if (!this.#done) {
       this.stats.skipped++;
       this.stats.answered++;
+      this.#addTrouble();
     }
     this.next(held);
   }
@@ -131,7 +201,7 @@ export class ChordDrill {
   /** `held`: as teclas presas agora (são ignoradas até serem soltas). */
   next(held: readonly MidiPitch[] = []): void {
     this.#waitRelease = held.length > 0;
-    this.#q = this.#draw(this.#q.symbol);
+    this.#q = this.#draw(this.#q);
     this.#missed = false;
     this.#done = false;
     this.#attempt.clear();

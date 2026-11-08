@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Minutos de prática por dia, em colunas empilhadas (partituras + treino).
+  // Minutos de prática por dia, em colunas empilhadas (partituras + treinos).
   import type { DayTotal } from '../../storage/progress';
 
   let { days }: { days: DayTotal[] } = $props();
@@ -58,7 +58,7 @@
 <div class="chart" bind:clientWidth={width}>
   <div class="legend">
     <span><i style:background="var(--series-1)"></i>Partituras</span>
-    <span><i style:background="var(--series-2)"></i>Treino de leitura</span>
+    <span><i style:background="var(--series-2)"></i>Treinos</span>
   </div>
   <svg
     {width}

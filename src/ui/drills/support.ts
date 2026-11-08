@@ -60,15 +60,23 @@ export function chordEvents(pitches: readonly number[], gapMs = 300): InputEvent
   ];
 }
 
-export type ExerciseStats = Pick<ExerciseRecord, 'answered' | 'correct' | 'firstTry'>;
+export type ExerciseStats = Pick<ExerciseRecord, 'answered' | 'correct' | 'firstTry' | 'trouble'>;
 
-/** Grava a sessão do treino (pelo mesmo id) sempre que os números mudam. */
+/**
+ * Grava a sessão do treino (pelo mesmo id) a cada resposta e ao encerrar,
+ * para não perder nada se o Android fechar o app. Criado no ▶ Começar.
+ */
 export function exerciseSaver(kind: ExerciseKind, mode: string): (s: ExerciseStats) => void {
   const base = { id: newId(), kind, mode, startedAt: Date.now() };
   return (s) => {
     if (!s.answered) return;
     appHistory()
-      .saveExercise({ ...base, ...s, durationMs: Date.now() - base.startedAt })
+      .saveExercise({
+        ...base,
+        ...s,
+        trouble: s.trouble ? { ...s.trouble } : undefined,
+        durationMs: Date.now() - base.startedAt,
+      })
       .catch((err: unknown) => console.warn('Não consegui salvar o treino:', err));
   };
 }

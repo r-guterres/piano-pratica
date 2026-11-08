@@ -14,6 +14,8 @@
   const done = $derived(!!trail.s!.plan?.done[block.id]);
   const topicOpen = $derived(!!block.topic && !trail.s!.topics[block.topic]);
   const technique = $derived(block.id === 'aq');
+  // o treino abre com a meta de minutos e o tópico deste bloco
+  const goal = $derived({ minutes: block.min, block: block.id, topic: block.topic ?? null });
 
   function toggle() {
     const msg = toggleBlock(trail.s!, block.id);
@@ -45,18 +47,18 @@
     {#if block.song}<SongLine id={block.song} />{/if}
     <div class="row">
       {#if block.drill === 'reading'}
-        <button class="small" onclick={() => go('drill', { training: 'reading' })}>
+        <button class="small" onclick={() => go('drill', { training: 'reading', goal })}>
           Abrir treino de leitura
         </button>
-        <button class="small" onclick={() => go('drill', { training: 'sight' })}>
+        <button class="small" onclick={() => go('drill', { training: 'sight', goal })}>
           Ler e tocar
         </button>
       {:else if block.drill === 'chords'}
-        <button class="small" onclick={() => go('drill', { training: 'chords' })}>
+        <button class="small" onclick={() => go('drill', { training: 'chords', goal })}>
           Abrir treino de acordes
         </button>
       {:else if block.drill === 'ear'}
-        <button class="small" onclick={() => go('drill', { training: 'ear' })}>
+        <button class="small" onclick={() => go('drill', { training: 'ear', goal })}>
           Abrir treino de ouvido
         </button>
       {/if}

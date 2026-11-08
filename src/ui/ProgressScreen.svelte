@@ -10,6 +10,7 @@
     toExportJson,
   } from '../storage/progress';
   import DailyBars from './charts/DailyBars.svelte';
+  import ExerciseProgressCard from './ExerciseProgressCard.svelte';
   import RecordingsCard from './RecordingsCard.svelte';
   import TrendLine from './charts/TrendLine.svelte';
   import { settings } from './settings.svelte';
@@ -214,6 +215,8 @@
       </p>
     {/if}
   </section>
+
+  <ExerciseProgressCard exercises={data.exercises} />
 
   <section class="card">
     <h2>Partituras</h2>

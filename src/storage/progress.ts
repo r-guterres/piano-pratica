@@ -1,7 +1,13 @@
 // Números da tela de progresso e o arquivo de exportação, calculados a partir
 // do histórico. Puro (datas no fuso local do aparelho).
 
-import type { DrillRoundRecord, HistoryData, ScoreSessionRecord } from './history';
+import type {
+  DrillRoundRecord,
+  ExerciseKind,
+  ExerciseRecord,
+  HistoryData,
+  ScoreSessionRecord,
+} from './history';
 
 /** Dia local no formato AAAA-MM-DD. */
 export function dayKey(t: number): string {
@@ -31,11 +37,65 @@ export function dailyTotals(data: HistoryData, days: number, now: number): DayTo
     const total = index.get(dayKey(s.startedAt));
     if (total) total.scoreMs += s.summary.durationMs;
   }
-  for (const r of data.drillRounds) {
+  for (const r of [...data.drillRounds, ...data.exercises]) {
     const total = index.get(dayKey(r.startedAt));
     if (total) total.drillMs += r.durationMs;
   }
   return out;
+}
+
+export interface ExerciseDay {
+  day: string;
+  answered: number;
+  /** Acordes: de primeira; ouvido e ler e tocar: certos. */
+  hits: number;
+}
+
+export interface ExerciseGroup {
+  /** "chords", "ear:int", "sight:treble"… */
+  key: string;
+  kind: ExerciseKind;
+  /** Modo do ouvido / do ler e tocar (os acordes ficam todos juntos). */
+  mode: string | null;
+  sessions: number;
+  answered: number;
+  hits: number;
+  durationMs: number;
+  days: ExerciseDay[];
+  /** O que mais deu trabalho, somado em todas as sessões (no máximo 6). */
+  trouble: [label: string, times: number][];
+}
+
+/** Treinos do M8 agrupados por tipo (e modo), com a taxa de acerto por dia. */
+export function exerciseProgress(list: readonly ExerciseRecord[]): ExerciseGroup[] {
+  const groups = new Map<string, ExerciseGroup & { troubleMap: Map<string, number> }>();
+  for (const e of [...list].sort((a, b) => a.startedAt - b.startedAt)) {
+    if (!e.answered) continue;
+    const mode = e.kind === 'chords' ? null : e.mode;
+    const key = mode ? `${e.kind}:${mode}` : e.kind;
+    let g = groups.get(key);
+    if (!g) {
+      const empty = { sessions: 0, answered: 0, hits: 0, durationMs: 0, trouble: [] };
+      g = { key, kind: e.kind, mode, ...empty, days: [], troubleMap: new Map() };
+      groups.set(key, g);
+    }
+    const hits = e.kind === 'chords' ? e.firstTry : e.correct;
+    g.sessions++;
+    g.answered += e.answered;
+    g.hits += hits;
+    g.durationMs += e.durationMs;
+    const day = dayKey(e.startedAt);
+    let d = g.days.at(-1);
+    if (d?.day !== day) g.days.push((d = { day, answered: 0, hits: 0 }));
+    d.answered += e.answered;
+    d.hits += hits;
+    for (const [label, n] of Object.entries(e.trouble ?? {}))
+      g.troubleMap.set(label, (g.troubleMap.get(label) ?? 0) + n);
+  }
+  return [...groups.values()].map(({ troubleMap, ...g }) => ({
+    ...g,
+    trouble: [...troubleMap].sort((a, b) => b[1] - a[1]).slice(0, 6),
+  }));
 }
 
 export interface PieceProgress {

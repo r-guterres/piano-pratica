@@ -3,6 +3,7 @@
 // a um treino, ao metrônomo ou a uma partitura.
 
 import type { ScoreSource } from './Library.svelte';
+import type { BlockId } from '../trail/state';
 import { scoreSource } from './scores';
 import { showToast } from './toast.svelte';
 
@@ -11,6 +12,15 @@ export type ScreenId =
 export type Training = 'reading' | 'sight' | 'chords' | 'ear' | 'pedal';
 export type TrailView = 'phases' | 'repertoire';
 
+/** Treino aberto por um bloco do Hoje: a meta de minutos e o tópico do bloco. */
+export interface DrillGoal {
+  training: Training;
+  minutes: number;
+  block: BlockId;
+  /** Tópico do bloco (escolhe o exercício: progressão de acordes, modo do ouvido). */
+  topic: string | null;
+}
+
 export const nav = $state<{
   screen: ScreenId;
   training: Training;
@@ -18,13 +28,27 @@ export const nav = $state<{
   /** Música a mostrar no repertório (rola até ela). */
   song: string | null;
   openScore: ScoreSource | null;
-}>({ screen: 'today', training: 'reading', trailView: 'phases', song: null, openScore: null });
+  goal: DrillGoal | null;
+}>({
+  screen: 'today',
+  training: 'reading',
+  trailView: 'phases',
+  song: null,
+  openScore: null,
+  goal: null,
+});
 
 export function go(
   screen: ScreenId,
-  opts: { training?: Training; trailView?: TrailView; song?: string | null } = {},
+  opts: {
+    training?: Training;
+    trailView?: TrailView;
+    song?: string | null;
+    goal?: Omit<DrillGoal, 'training'>;
+  } = {},
 ): void {
   if (opts.training) nav.training = opts.training;
+  nav.goal = opts.goal && opts.training ? { ...opts.goal, training: opts.training } : null;
   if (opts.trailView) nav.trailView = opts.trailView;
   nav.song = opts.song ?? null;
   nav.screen = screen;

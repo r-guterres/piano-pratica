@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { DrillSummary } from '../drills/readingDrill';
 import type { WaitModeSummary } from '../practice/waitMode';
-import type { DrillRoundRecord, HistoryData, ScoreSessionRecord } from './history';
+import type { DrillRoundRecord, ExerciseRecord, HistoryData, ScoreSessionRecord } from './history';
 import {
   dailyTotals,
   dayKey,
   drillTrend,
   EXPORT_FORMAT,
+  exerciseProgress,
   exportFileName,
   pieceProgress,
   toExportJson,
@@ -70,6 +71,27 @@ const round = (startedAt: number, answered: number, firstTry: number): DrillRoun
   summary: drillSummary(answered, firstTry, 1500),
 });
 
+const exercise = (
+  kind: ExerciseRecord['kind'],
+  mode: string,
+  startedAt: number,
+  answered: number,
+  correct: number,
+  firstTry: number,
+  durationMs = MIN,
+  trouble?: Record<string, number>,
+): ExerciseRecord => ({
+  id: `e${n++}`,
+  kind,
+  mode,
+  startedAt,
+  durationMs,
+  answered,
+  correct,
+  firstTry,
+  trouble,
+});
+
 const data = (over: Partial<HistoryData> = {}): HistoryData => ({
   trail: null,
   diary: [],
@@ -98,12 +120,13 @@ describe('progress', () => {
           session('a', at(1), 1, 1),
         ],
         drillRounds: [round(at(3), 10, 5), round(at(4), 10, 5)],
+        exercises: [exercise('ear', 'mm', at(2), 10, 8, 8, 3 * MIN)],
       }),
       3,
       at(4, 22),
     );
     expect(totals).toEqual([
-      { day: '2026-11-02', scoreMs: 0, drillMs: 0 },
+      { day: '2026-11-02', scoreMs: 0, drillMs: 3 * MIN },
       { day: '2026-11-03', scoreMs: 0, drillMs: 5 * MIN },
       { day: '2026-11-04', scoreMs: 10 * MIN, drillMs: 5 * MIN },
     ]);
@@ -163,5 +186,30 @@ describe('progress', () => {
     expect(json).toMatchObject({ format: EXPORT_FORMAT, version: 3, commit: 'abc123' });
     expect(json.scoreSessions[0].summary.clean).toBe(3);
     expect(exportFileName(at(4))).toBe('piano-pratica-historico-2026-11-04.json');
+  });
+});
+
+describe('exerciseProgress', () => {
+  it('groups the M8 drills by kind and mode, with the hit rate per day', () => {
+    const groups = exerciseProgress([
+      exercise('chords', 'fase 0', at(3), 10, 10, 6, MIN, { D7: 2, 'C/E': 1 }),
+      exercise('chords', 'h0c', at(3, 18), 8, 8, 8),
+      exercise('chords', 'h0c', at(4), 4, 3, 2, MIN, { D7: 1 }),
+      exercise('ear', 'int', at(4), 10, 7, 7),
+      exercise('ear', 'mm', at(4), 0, 0, 0), // sessão sem respostas não conta
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['chords', 'ear:int']);
+    const chords = groups[0]!;
+    // acordes contam os de primeira; os modos ficam juntos
+    expect(chords).toMatchObject({ sessions: 3, answered: 22, hits: 16, durationMs: 3 * MIN });
+    expect(chords.days).toEqual([
+      { day: '2026-11-03', answered: 18, hits: 14 },
+      { day: '2026-11-04', answered: 4, hits: 2 },
+    ]);
+    expect(chords.trouble).toEqual([
+      ['D7', 3],
+      ['C/E', 1],
+    ]);
+    expect(groups[1]).toMatchObject({ mode: 'int', hits: 7, answered: 10 });
   });
 });

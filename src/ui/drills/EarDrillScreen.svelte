@@ -1,6 +1,7 @@
 <script lang="ts">
   // Treino de ouvido: maior ou menor, intervalos e graus. Responde nos botões
   // ou tocando (intervalo: a nota de cima; maior/menor e graus: o acorde).
+  // Sessão: escolher o modo → ▶ Começar → ■ Encerrar → resumo.
   import { onDestroy } from 'svelte';
   import {
     answerFromKeys,
@@ -16,13 +17,26 @@
   import { heldPitches } from '../../input/held.svelte';
   import { inputHub } from '../../input/hub';
   import { loadTrail, trail } from '../trail.svelte';
+  import { DrillSession } from './session.svelte';
+  import SessionBar from './SessionBar.svelte';
+  import SessionSummary from './SessionSummary.svelte';
   import { chordEvents, exerciseSaver, playEvents, stopSound } from './support';
 
   void loadTrail();
+  const session = new DrillSession('ear');
   const phase = $derived(trail.s?.phase ?? 0);
   const modes = $derived(earModesFor(phase));
 
-  let mode = $state<EarMode | null>(null);
+  // o tópico do bloco do Hoje escolhe o modo
+  const TOPIC_MODE: Record<string, EarMode> = {
+    o0a: 'mm',
+    o0b: 'int',
+    o1a: 'degree',
+    o2b: 'degree',
+  };
+  let mode = $state<EarMode>(TOPIC_MODE[session.goal?.topic ?? ''] ?? 'mm');
+  /** Respostas certas que foram erradas → vezes. */
+  let trouble = $state<Record<string, number>>({});
   let q = $state.raw<EarQuestion | null>(null);
   let result = $state<{ ok: boolean; choice: string } | null>(null);
   let heard = $state(false);
@@ -36,11 +50,20 @@
     degree: 'Ouça a cadência I–IV–V–I e depois o acorde. Responda nos botões ou toque o acorde.',
   };
 
-  function start(m: EarMode) {
-    mode = m;
+  function start() {
+    if (!modes.includes(mode)) mode = 'mm';
     stats = { answered: 0, correct: 0, firstTry: 0 };
-    save = exerciseSaver('ear', m);
+    trouble = {};
+    save = exerciseSaver('ear', mode);
+    session.start();
     newQuestion();
+  }
+
+  function finish() {
+    clearTimeout(timer);
+    stopSound();
+    if (stats.answered) save?.({ ...stats, trouble });
+    session.finish();
   }
 
   // só vale como resposta uma tecla tocada depois do início da pergunta
@@ -51,7 +74,7 @@
   });
 
   function newQuestion() {
-    if (!mode) return;
+    if (session.phase !== 'running') return;
     askedAt = performance.now();
     q = earQuestion(mode, phase);
     result = null;
@@ -73,8 +96,8 @@
     if (ok) {
       stats.correct++;
       stats.firstTry++;
-    }
-    save?.(stats);
+    } else trouble[answerLabel] = (trouble[answerLabel] ?? 0) + 1;
+    save?.({ ...stats, trouble });
   }
 
   // resposta pelo teclado, 250 ms depois da última tecla (o acorde "assentou")
@@ -82,7 +105,8 @@
   $effect(() => {
     const held = [...heldPitches].sort((a, b) => a - b);
     clearTimeout(timer);
-    if (!q || result || !heard || !held.length || lastOn <= askedAt) return;
+    if (session.phase !== 'running' || !q || result || !heard || !held.length || lastOn <= askedAt)
+      return;
     timer = setTimeout(() => {
       const v = answerFromKeys(q!, held);
       if (v !== null) respond(v);
@@ -102,7 +126,12 @@
     q?.options.find((o) => o.value === v)?.label ??
     (v === '?' ? 'outro acorde' : q?.mode === 'int' ? intervalName(Number(v)) : v);
 
+  const troubleList = $derived(Object.entries(trouble).sort((a, b) => b[1] - a[1]));
+  const pct = (a: number, t: number) => (t ? `${Math.round((100 * a) / t)}%` : '—');
+
   onDestroy(() => {
+    if (session.phase === 'running' && stats.answered) save?.({ ...stats, trouble });
+    session.dispose();
     unsubscribe();
     clearTimeout(timer);
     stopSound();
@@ -110,21 +139,47 @@
 </script>
 
 <section class="card drill">
-  <div class="head">
-    <h2>Ouvido</h2>
-    {#if mode}<span class="muted">{stats.correct} de {stats.answered}</span>{/if}
-  </div>
-  <div class="row">
-    {#each modes as m (m)}
-      <button class:primary={mode === m} onclick={() => start(m)}>{EAR_MODES[m]}</button>
-    {/each}
-  </div>
-  {#if !mode}
-    <p class="muted">
-      Escolha um modo. O som sai pelo teclado ou pelo tablet, conforme Configurações → Som. Os graus
-      entram a partir da Fase 1 (ii e ♭VII na Fase 2).
+  <h2>Ouvido</h2>
+  {#if session.phase === 'setup'}
+    <div class="row">
+      {#each modes as m (m)}
+        <button class:primary={mode === m} onclick={() => (mode = m)}>{EAR_MODES[m]}</button>
+      {/each}
+    </div>
+    <p class="muted small">
+      {HINT[mode]} O som sai pelo teclado ou pelo tablet, conforme Configurações → Som. Os graus entram
+      a partir da Fase 1 (ii e ♭VII na Fase 2).
     </p>
+    <div class="row">
+      <button class="primary" onclick={start}>▶ Começar</button>
+      {#if session.goal}
+        <span class="muted small">Meta do bloco: {session.goal.minutes} min</span>
+      {/if}
+    </div>
+  {:else if session.phase === 'summary'}
+    <SessionSummary
+      {session}
+      onagain={start}
+      tiles={[
+        { value: stats.answered, label: 'respostas' },
+        { value: stats.correct, label: 'certas' },
+        { value: pct(stats.correct, stats.answered), label: 'de acerto' },
+      ]}
+    >
+      <p class="muted">{EAR_MODES[mode]}</p>
+      {#if troubleList.length}
+        <p>
+          <b>Errou:</b>
+          {troubleList.map(([label, n]) => (n > 1 ? `${label} (${n}×)` : label)).join(' · ')}
+        </p>
+      {:else if stats.answered}
+        <p class="ok">Nenhum erro!</p>
+      {/if}
+    </SessionSummary>
   {:else if q}
+    <SessionBar {session} onfinish={finish}>
+      <span class="muted">{EAR_MODES[mode]} · {stats.correct} de {stats.answered}</span>
+    </SessionBar>
     <p class="muted small">{HINT[mode]}</p>
     <div class="row">
       <button class="primary" onclick={listen}>Ouvir{heard ? ' de novo' : ''}</button>
@@ -163,17 +218,13 @@
   .drill p {
     margin: 0;
   }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
   h2 {
     margin: 0;
   }
   .row {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
   }
   .answers {
@@ -199,7 +250,8 @@
     min-height: 1.5em;
     font-weight: 700;
   }
-  .feedback.ok {
+  .feedback.ok,
+  .ok {
     color: var(--ok);
   }
   .feedback.no {

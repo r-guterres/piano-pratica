@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ChordDrill } from './chordDrill';
+import { CHORD_PRESETS, chordPreset } from './chordPresets';
+import { PHASES } from '../trail/content';
 import {
   answerFromKeys,
   earQuestion,
@@ -15,10 +17,10 @@ describe('ChordDrill', () => {
   it('waits for enough keys, counts wrong attempts and moves on', () => {
     const drill = new ChordDrill(['C', 'Am'], seededRng(1));
     const q = drill.question;
-    const right = inversionVoicing(q.chord, q.inv);
+    const right = inversionVoicing(q.chord, q.inv!);
     expect(drill.check(right.slice(0, 2))).toBeNull(); // ainda montando
     // notas certas, mas em outra inversão (baixo errado)
-    const other = inversionVoicing(q.chord, (q.inv + 1) % q.chord.tones.length);
+    const other = inversionVoicing(q.chord, (q.inv! + 1) % q.chord.tones.length);
     expect(drill.check(other)).toBe('wrong-bass');
     expect(drill.check(right)).toBe('correct');
     expect(drill.check(right)).toBeNull(); // já acertado
@@ -26,7 +28,7 @@ describe('ChordDrill', () => {
     drill.next();
     const q2 = drill.question;
     expect(q2.symbol).not.toBe(q.symbol); // não repete o anterior
-    expect(drill.check(inversionVoicing(q2.chord, q2.inv))).toBe('correct');
+    expect(drill.check(inversionVoicing(q2.chord, q2.inv!))).toBe('correct');
     drill.next();
     drill.skip();
     expect(drill.stats).toEqual({ correct: 2, firstTry: 1, skipped: 1, answered: 3 });
@@ -44,7 +46,7 @@ describe('ChordDrill', () => {
     expect(drill.check([])).toBe('wrong');
     // soltar depois de um veredito não conta de novo
     const q = drill.question;
-    const right = inversionVoicing(q.chord, q.inv);
+    const right = inversionVoicing(q.chord, q.inv!);
     expect(drill.check(right)).toBe('correct');
     expect(drill.check([])).toBeNull();
     expect(drill.stats.firstTry).toBe(0);
@@ -53,13 +55,56 @@ describe('ChordDrill', () => {
   it('ignores the keys of the previous chord still held when the next one appears', () => {
     const drill = new ChordDrill(['C', 'G'], seededRng(4));
     const q = drill.question;
-    const right = inversionVoicing(q.chord, q.inv);
+    const right = inversionVoicing(q.chord, q.inv!);
     expect(drill.check(right)).toBe('correct');
     drill.next(right); // o aluno ainda segura o acorde
     expect(drill.check(right.slice(0, 2))).toBeNull(); // soltando aos poucos
     expect(drill.check([])).toBeNull(); // não conta como tentativa do novo acorde
     drill.check([right[0]!]);
     expect(drill.check([])).not.toBeNull(); // agora sim
+  });
+
+  it('asks a progression in order, with the bass written in the chart (tópico h0c)', () => {
+    const p = chordPreset('h0c')!;
+    const drill = new ChordDrill(p.chords, seededRng(5), p);
+    expect(drill.labels).toEqual(['C', 'F/C', 'G/B', 'C']);
+    const seen: string[] = [];
+    for (let k = 0; k < 5; k++) {
+      const q = drill.question;
+      seen.push(q.label);
+      expect(drill.check(inversionVoicing(q.chord, q.inv!))).toBe('correct');
+      drill.next();
+    }
+    expect(seen).toEqual(['C', 'F/C', 'G/B', 'C', 'C']); // recomeça no fim
+  });
+
+  it('accepts any inversion when the exercise asks for voice leading', () => {
+    const p = chordPreset('h1b')!;
+    const drill = new ChordDrill(p.chords, seededRng(6), p);
+    const q = drill.question;
+    expect(q.inv).toBeNull();
+    expect(drill.check(inversionVoicing(q.chord, 2))).toBe('correct');
+  });
+
+  it('remembers the chords that did not come out first try', () => {
+    const drill = new ChordDrill(['C/E', 'G'], seededRng(7), {
+      order: 'sequence',
+      inversions: 'written',
+    });
+    const q = drill.question; // C/E
+    drill.check(inversionVoicing(q.chord, 0)); // fundamental: baixo errado
+    drill.check(inversionVoicing(q.chord, 1));
+    drill.next();
+    drill.skip(); // G
+    expect(drill.trouble).toEqual({ 'C/E': 1, G: 1 });
+  });
+
+  it('reads every chord of every exercise, and each exercise belongs to a harmony topic', () => {
+    const topics = PHASES.flatMap((f) => f.harmony.map((t) => t.id));
+    for (const p of CHORD_PRESETS) {
+      expect(topics).toContain(p.topic);
+      expect(new ChordDrill(p.chords, seededRng(1), p).labels).toHaveLength(p.chords.length);
+    }
   });
 
   it('ignores symbols it cannot read', () => {

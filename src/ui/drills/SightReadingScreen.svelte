@@ -2,6 +2,7 @@
   // Ler e tocar: um trecho curto na pauta para tocar no tempo, depois de uma
   // contagem de 4 tempos. O app avalia cada nota (no tempo, adiantada,
   // atrasada, perdida) como no modo acompanhar.
+  // Sessão: escolher o modo → ▶ Começar → ■ Encerrar → resumo.
   import { onDestroy } from 'svelte';
   import type { InputEvent } from '../../core/events';
   import { pitchName } from '../../core/pitch';
@@ -21,9 +22,13 @@
   import { settings } from '../settings.svelte';
   import { loadTrail, trail } from '../trail.svelte';
   import { drawPassage } from './passageStaff';
+  import { DrillSession } from './session.svelte';
+  import SessionBar from './SessionBar.svelte';
+  import SessionSummary from './SessionSummary.svelte';
   import { exerciseSaver, playEvents, playSchedule, stopSound } from './support';
 
   void loadTrail();
+  const session = new DrillSession('sight');
 
   const COLOR = { ontime: '#2e7d32', off: '#e65100', missed: '#9e2b25' };
 
@@ -41,7 +46,9 @@
   let result = $state<{ text: string; ok: boolean } | null>(null);
   let warning = $state('');
   let stats = $state({ answered: 0, correct: 0, firstTry: 0 });
-  let save = exerciseSaver('sight', 'treble');
+  /** Notas da sessão: no tempo e todas. */
+  let notes = $state({ ontime: 0, total: 0 });
+  let save: ReturnType<typeof exerciseSaver> | null = null;
 
   let staffEl = $state<HTMLDivElement | undefined>();
   let fontsLoaded = $state(false);
@@ -60,12 +67,19 @@
     lastWrong = '';
   }
 
-  function setMode(m: SightMode) {
-    mode = m;
+  function start() {
     stats = { answered: 0, correct: 0, firstTry: 0 };
-    save = exerciseSaver('sight', m);
+    notes = { ontime: 0, total: 0 };
+    save = exerciseSaver('sight', mode);
     passage = null;
     newPassage();
+    session.start();
+  }
+
+  function finishSession() {
+    stop();
+    if (stats.answered) save?.(stats);
+    session.finish();
   }
 
   $effect(() => {
@@ -118,7 +132,7 @@
       },
       onEnd: () => {
         beat = null;
-        finishTimer = setTimeout(finish, WINDOW_MS + 100);
+        finishTimer = setTimeout(judgePassage, WINDOW_MS + 100);
       },
     });
     warning = w;
@@ -136,7 +150,7 @@
       };
   }
 
-  function finish() {
+  function judgePassage() {
     if (!judge) return;
     apply(judge.advance(performance.now() + 10_000));
     const r = judge.summary();
@@ -147,7 +161,9 @@
     stats.answered++;
     if (ok) stats.correct++;
     if (clean) stats.firstTry++;
-    save(stats);
+    notes.ontime += r.ontime;
+    notes.total += r.ontime + r.early + r.late + r.missed;
+    save?.(stats);
     result = {
       ok,
       text: clean
@@ -172,88 +188,151 @@
     warning = playEvents(passageEvents(passage, bpm), passageMs(passage, bpm) + 500).warning;
   }
 
-  newPassage();
+  const pct = (a: number, t: number) => (t ? `${Math.round((100 * a) / t)}%` : '—');
+
   onDestroy(() => {
+    if (session.phase === 'running' && stats.answered) save?.(stats);
+    session.dispose();
     stop();
     unsubscribe();
   });
 </script>
 
 <section class="card drill">
-  <div class="head">
-    <h2>Ler e tocar</h2>
-    <span class="muted"
-      >{stats.correct} de {stats.answered} trechos certos · {stats.firstTry} no tempo</span
+  <h2>Ler e tocar</h2>
+  {#if session.phase === 'setup'}
+    <div class="row">
+      {#each Object.entries(SIGHT_MODES) as [m, label] (m)}
+        <button class:primary={mode === m} onclick={() => (mode = m as SightMode)}>{label}</button>
+      {/each}
+    </div>
+    <p class="muted small">
+      Em cada trecho, toque em ▶ Tocar: depois de 4 tempos de contagem, leia e toque no tempo, sem
+      parar para corrigir. Verde = no tempo, laranja = adiantada ou atrasada, vermelho = perdida.
+    </p>
+    <div class="row settings">
+      <label class="inline">
+        Andamento
+        <input
+          type="number"
+          min="40"
+          max="160"
+          step="5"
+          bind:value={bpm}
+          disabled={playing}
+          class="bpm"
+        /> bpm
+      </label>
+      {#if mode !== 'both'}
+        <span class="inline">
+          Notas:
+          {#each [4, 6, 8] as n (n)}
+            <button
+              class="small"
+              class:primary={count === n}
+              onclick={() => {
+                count = n;
+                newPassage();
+              }}>{n}</button
+            >
+          {/each}
+        </span>
+      {/if}
+      <label class="inline">
+        <input type="checkbox" bind:checked={metronome} disabled={playing} /> Metrônomo
+      </label>
+      <label class="inline">
+        <input type="checkbox" bind:checked={extended} onchange={newPassage} disabled={playing} /> Extensão
+        ampliada
+      </label>
+      <label class="inline">
+        <input type="checkbox" bind:checked={showNames} /> Nomes das notas
+      </label>
+    </div>
+    <div class="row">
+      <button class="primary" onclick={start}>▶ Começar</button>
+      {#if session.goal}
+        <span class="muted small">Meta do bloco: {session.goal.minutes} min</span>
+      {/if}
+    </div>
+  {:else if session.phase === 'summary'}
+    <SessionSummary
+      {session}
+      onagain={start}
+      tiles={[
+        { value: stats.answered, label: 'trechos' },
+        { value: stats.correct, label: 'certos' },
+        { value: stats.firstTry, label: 'todos no tempo' },
+        { value: pct(notes.ontime, notes.total), label: 'das notas no tempo' },
+      ]}
     >
-  </div>
-  <div class="row">
-    {#each Object.entries(SIGHT_MODES) as [m, label] (m)}
-      <button class:primary={mode === m} onclick={() => setMode(m as SightMode)}>{label}</button>
-    {/each}
-  </div>
-  <p class="muted small">
-    Toque em ▶ Tocar: depois de 4 tempos de contagem, leia e toque no tempo, sem parar para
-    corrigir. Verde = no tempo, laranja = adiantada ou atrasada, vermelho = perdida.
-  </p>
+      <p class="muted">{SIGHT_MODES[mode]} · {bpm} bpm</p>
+    </SessionSummary>
+  {:else}
+    <SessionBar {session} onfinish={finishSession}>
+      <span class="muted"
+        >{SIGHT_MODES[mode]} · {stats.correct} de {stats.answered} certos · {stats.firstTry} no tempo</span
+      >
+    </SessionBar>
 
-  <div class="staff" bind:this={staffEl}></div>
+    <div class="staff" bind:this={staffEl}></div>
 
-  <div class="row">
-    {#if playing}
-      <button class="primary" onclick={stop}>■ Parar</button>
-    {:else}
-      <button class="primary" onclick={play}>▶ Tocar</button>
-    {/if}
-    <button onclick={listen} disabled={playing}>Ouvir</button>
-    <button onclick={newPassage}>Outro trecho</button>
-    {#if beat !== null}
-      <span class="beats">
-        {#each [0, 1, 2, 3] as i (i)}<i class:on={beat === i}></i>{/each}
-      </span>
-    {/if}
-  </div>
-  {#if lastWrong && playing}<p class="bad">{lastWrong}</p>{/if}
-  {#if result}<p class="result" class:ok={result.ok}>{result.text}</p>{/if}
-
-  <div class="row settings">
-    <label class="inline">
-      Andamento
-      <input
-        type="number"
-        min="40"
-        max="160"
-        step="5"
-        bind:value={bpm}
-        disabled={playing}
-        class="bpm"
-      /> bpm
-    </label>
-    {#if mode !== 'both'}
-      <span class="inline">
-        Notas:
-        {#each [4, 6, 8] as n (n)}
-          <button
-            class="small"
-            class:primary={count === n}
-            onclick={() => {
-              count = n;
-              newPassage();
-            }}>{n}</button
-          >
-        {/each}
-      </span>
-    {/if}
-    <label class="inline">
-      <input type="checkbox" bind:checked={metronome} disabled={playing} /> Metrônomo
-    </label>
-    <label class="inline">
-      <input type="checkbox" bind:checked={extended} onchange={newPassage} disabled={playing} /> Extensão
-      ampliada
-    </label>
-    <label class="inline">
-      <input type="checkbox" bind:checked={showNames} /> Nomes das notas
-    </label>
-  </div>
+    <div class="row">
+      {#if playing}
+        <button class="primary" onclick={stop}>■ Parar</button>
+      {:else}
+        <button class="primary" onclick={play}>▶ Tocar</button>
+      {/if}
+      <button onclick={listen} disabled={playing}>Ouvir</button>
+      <button onclick={newPassage}>Outro trecho</button>
+      {#if beat !== null}
+        <span class="beats">
+          {#each [0, 1, 2, 3] as i (i)}<i class:on={beat === i}></i>{/each}
+        </span>
+      {/if}
+    </div>
+    {#if lastWrong && playing}<p class="bad">{lastWrong}</p>{/if}
+    {#if result}<p class="result" class:ok={result.ok}>{result.text}</p>{/if}
+    <div class="row settings">
+      <label class="inline">
+        Andamento
+        <input
+          type="number"
+          min="40"
+          max="160"
+          step="5"
+          bind:value={bpm}
+          disabled={playing}
+          class="bpm"
+        /> bpm
+      </label>
+      {#if mode !== 'both'}
+        <span class="inline">
+          Notas:
+          {#each [4, 6, 8] as n (n)}
+            <button
+              class="small"
+              class:primary={count === n}
+              onclick={() => {
+                count = n;
+                newPassage();
+              }}>{n}</button
+            >
+          {/each}
+        </span>
+      {/if}
+      <label class="inline">
+        <input type="checkbox" bind:checked={metronome} disabled={playing} /> Metrônomo
+      </label>
+      <label class="inline">
+        <input type="checkbox" bind:checked={extended} onchange={newPassage} disabled={playing} /> Extensão
+        ampliada
+      </label>
+      <label class="inline">
+        <input type="checkbox" bind:checked={showNames} /> Nomes das notas
+      </label>
+    </div>
+  {/if}
   {#if warning}<p class="warn">{warning}</p>{/if}
 </section>
 
@@ -264,13 +343,6 @@
   }
   .drill p {
     margin: 0;
-  }
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
   }
   h2 {
     margin: 0;

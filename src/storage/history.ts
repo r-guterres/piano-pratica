@@ -106,6 +106,8 @@ export interface ExerciseRecord {
   correct: number;
   /** Acordes: certos sem tentativa errada; ler e tocar: trechos todos no tempo. */
   firstTry: number;
+  /** O que deu trabalho → vezes (acordes: a cifra; ouvido: a resposta certa que foi errada). */
+  trouble?: Record<string, number>;
 }
 
 export type DrillStats = Record<string, ItemStats>;
