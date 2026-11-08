@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoReadingMilestone,
+  choosePiece,
+  currentPiece,
   effectiveMinutes,
   finishSession,
   generatePlan,
@@ -11,10 +13,12 @@ import {
   normalizeTrail,
   overdueSongs,
   piggyBank,
+  pieceId,
   practiced,
   refreshPlan,
   reviewSong,
   sessionMinutes,
+  songInfo,
   startSession,
   toggleBlock,
   toggleMilestone,
@@ -62,6 +66,37 @@ describe('generatePlan', () => {
     const empty = initialTrail('2026-10-22');
     for (const m of Object.values(empty.songs)) m.status = 'queue';
     expect(generatePlan(empty, '2026-11-05', true).blocks[0]!.id).toBe('livre');
+  });
+
+  it('studies the classical piece chosen from a score file, one at a time', () => {
+    const s = stateOfNov5();
+    s.goals.skoove = false;
+    const clas = () => generatePlan(s, '2026-11-05', false).blocks.find((b) => b.id === 'clas')!;
+    // sem peça escolhida (o Minueto do catálogo não conta): pede para escolher
+    expect([clas().title, clas().goTo]).toEqual(['Escolher a peça clássica', 'repertoire']);
+
+    choosePiece(s, 'file:Bartok-Long-And-Short', 'Long And Short', '2026-11-08');
+    const id = pieceId('file:Bartok-Long-And-Short');
+    expect(currentPiece(s)).toBe(id);
+    expect([clas().title, clas().song]).toEqual(['Peça clássica', id]);
+    expect(s.songs[id]).toMatchObject({
+      status: 'learning',
+      scoreId: 'file:Bartok-Long-And-Short',
+    });
+    expect(songInfo(s, id)).toMatchObject({ title: 'Long And Short', kind: 'classical' });
+
+    // outra peça vira o alvo; a anterior volta para a fila
+    choosePiece(s, 'file:Sonatina', 'Sonatina', '2026-11-09');
+    expect(currentPiece(s)).toBe(pieceId('file:Sonatina'));
+    expect(s.songs[id]!.status).toBe('queue');
+
+    // concluída: entra na revisão espaçada e o bloco volta a pedir a próxima
+    learnedSong(s, pieceId('file:Sonatina'), '2026-11-20');
+    expect(currentPiece(s)).toBeNull();
+    expect(clas().title).toBe('Escolher a peça clássica');
+    expect(overdueSongs(s, '2026-11-21')).toEqual([pieceId('file:Sonatina')]);
+    // e sobrevive à normalização do estado gravado
+    expect(normalizeTrail(structuredClone(s)).pieces).toEqual(s.pieces);
   });
 
   it('skips topics already mastered', () => {

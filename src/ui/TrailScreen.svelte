@@ -2,11 +2,12 @@
   // Aba "Trilha": as fases (tópicos e marcos) e o repertório.
   import { tick } from 'svelte';
   import { SONGS } from '../trail/content';
-  import { MASTERED_BOX, songsInStudy, type SongStatus } from '../trail/state';
+  import { currentPiece, MASTERED_BOX, songsInStudy, type SongStatus } from '../trail/state';
   import { nav } from './nav.svelte';
   import { scoreChoices } from './scores';
   import { loadTrail, trail } from './trail.svelte';
   import PhasesView from './trail/PhasesView.svelte';
+  import PieceCard from './trail/PieceCard.svelte';
   import SongCard from './trail/SongCard.svelte';
 
   void loadTrail();
@@ -28,7 +29,9 @@
   const ids = $derived.by(() => {
     const s = trail.s;
     if (!s) return [];
-    return Object.keys(SONGS)
+    // o catálogo e as peças escolhidas (de arquivo), estas na fase atual
+    const phaseOf = (id: string) => SONGS[id]?.phase ?? s.phase;
+    return [...Object.keys(SONGS), ...Object.keys(s.pieces ?? {})]
       .filter((id) => {
         const st = s.songs[id];
         if (!st) return false;
@@ -36,10 +39,14 @@
         if (filter === 'mastered') return st.status === 'maintenance' && st.box >= MASTERED_BOX;
         return st.status === filter;
       })
-      .sort((a, b) => SONGS[a]!.phase - SONGS[b]!.phase);
+      .sort((a, b) => phaseOf(a) - phaseOf(b));
   });
   const inStudy = $derived(
-    trail.s ? songsInStudy(trail.s, 'pop').length + songsInStudy(trail.s, 'classical').length : 0,
+    trail.s
+      ? songsInStudy(trail.s, 'pop').length +
+          songsInStudy(trail.s, 'classical').length +
+          (currentPiece(trail.s) ? 1 : 0)
+      : 0,
   );
 
   // vindo de um bloco ("Ficha da música"): mostra a música
@@ -74,6 +81,7 @@
     revisão na hora certa. Ligue cada música à partitura no app (importada em Partituras) para
     abri-la direto da sessão do dia.
   </p>
+  <PieceCard {scores} />
   {#if inStudy > 3}
     <div class="banner">
       Você tem {inStudy} músicas em estudo. Três ao mesmo tempo (duas pop e uma clássica) costuma render

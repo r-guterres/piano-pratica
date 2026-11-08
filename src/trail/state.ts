@@ -11,6 +11,7 @@ import {
   SONGS,
   TOPIC_PILLARS,
   type Pillar,
+  type Song,
   type Topic,
   type TopicPillar,
 } from './content';
@@ -34,6 +35,16 @@ export const GRADE_TEXT: Record<Grade, string> = {
   hesitated: 'hesitei',
   forgot: 'esqueci',
 };
+
+/**
+ * Peça clássica escolhida pelo aluno: a partitura vem de um arquivo dele (ou da
+ * biblioteca), não do catálogo. O estado (estudo, revisão) fica em `songs`.
+ */
+export interface Piece {
+  title: string;
+  scoreId: string;
+  added: Day;
+}
 
 /** Registro de estudo de uma música ainda em estudo. */
 export interface StudyLog {
@@ -116,6 +127,8 @@ export interface TrailState {
   /** Pontos dados pela Trilha (blocos, tópicos, marcos, revisões…). */
   xp: Record<Pillar, number>;
   songs: Record<string, SongState>;
+  /** Peças clássicas escolhidas pelo aluno a partir de uma partitura (id = `pieceId`). */
+  pieces?: Record<string, Piece>;
   /** Tópicos dominados → dia. */
   topics: Record<string, Day>;
   /** Marcos conquistados → dia. */
@@ -258,6 +271,49 @@ export function reviewSong(s: TrailState, id: string, grade: Grade, d: Day): voi
   m.lastGrade = grade;
   addXp(s, 'repertoire', grade === 'flowed' ? 5 : grade === 'hesitated' ? 3 : 2);
   dayLog(s, d);
+}
+
+// ---- peça clássica escolhida pelo aluno ----
+
+export const pieceId = (scoreId: string) => `peca:${scoreId}`;
+
+/** A música do catálogo ou a peça escolhida (com os campos que o catálogo tem). */
+export function songInfo(s: TrailState | null, id: string): Song | null {
+  const M = SONGS[id];
+  if (M) return M;
+  const p = s?.pieces?.[id];
+  if (!p) return null;
+  return {
+    title: p.title,
+    artist: 'Partitura escolhida por você',
+    kind: 'classical',
+    phase: s!.phase,
+    key: '',
+    structure: '',
+    tip: '',
+  };
+}
+
+/** A peça clássica em estudo (a escolhida mais recentemente), ou null. */
+export function currentPiece(s: TrailState): string | null {
+  const ids = Object.entries(s.pieces ?? {})
+    .filter(([id]) => s.songs[id]?.status === 'learning')
+    .sort((a, b) => (a[1].added < b[1].added ? 1 : a[1].added > b[1].added ? -1 : 0))
+    .map(([id]) => id);
+  return ids[0] ?? null;
+}
+
+/** Escolhe a próxima peça (uma de cada vez: a que estava em estudo volta para a fila). */
+export function choosePiece(s: TrailState, scoreId: string, title: string, d: Day): string {
+  const id = pieceId(scoreId);
+  for (const other of Object.keys(s.pieces ?? {}))
+    if (other !== id && s.songs[other]?.status === 'learning') s.songs[other]!.status = 'queue';
+  s.pieces = { ...s.pieces, [id]: { title, scoreId, added: d } };
+  const st = (s.songs[id] ??= newSong());
+  st.status = 'learning';
+  st.scoreId = scoreId;
+  refreshPlan(s, d);
+  return id;
 }
 
 export function songsInStudy(s: TrailState, kind: 'pop' | 'classical'): string[] {
@@ -415,7 +471,7 @@ export function generatePlan(s: TrailState, d: Day, minimal: boolean): DayPlan {
   const B: Block[] = [];
   const due = overdueSongs(s, d);
   const pops = songsInStudy(s, 'pop');
-  const classics = songsInStudy(s, 'classical');
+  const piece = currentPiece(s);
 
   if (minimal) {
     if (due.length)
@@ -512,26 +568,27 @@ export function generatePlan(s: TrailState, d: Day, minimal: boolean): DayPlan {
       text: 'Abra o Skoove e faça a próxima lição. Ele escuta pelo MIDI e corrige na hora.',
       ...readingTopic,
     });
-  else if (classics.length)
+  else if (piece)
+    // a peça vem de uma partitura escolhida pelo aluno (não do catálogo)
     B.push({
       id: 'clas',
       pillar: 'reading',
       min: 15,
       title: 'Peça clássica',
-      song: classics[dn % classics.length]!,
+      song: piece,
       text: 'Leia com atenção ao dedilhado. Trabalhe 4 a 8 compassos novos e repasse os já estudados.',
       ...readingTopic,
     });
-  else if (lt)
+  else
     B.push({
       id: 'clas',
       pillar: 'reading',
       min: 15,
-      title: 'Leitura e ritmo',
-      theme: lt.title,
-      text: lt.text,
-      topic: lt.id,
+      title: 'Escolher a peça clássica',
+      text: 'Nenhuma peça clássica em estudo. Importe a partitura em Partituras e escolha-a no Repertório como a próxima peça. Enquanto isso, faça o Treino de leitura.',
+      ...readingTopic,
       drill: 'reading',
+      goTo: 'repertoire',
     });
   if (pops.length)
     B.push({

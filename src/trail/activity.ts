@@ -5,9 +5,8 @@
 import type { HistoryData } from '../storage/history';
 import { dayKey } from '../storage/progress';
 import type { Pillar } from './content';
-import { SONGS } from './content';
 import type { Day } from './dates';
-import { effectiveMinutes, GRADE_TEXT, type ReadingDay, type TrailState } from './state';
+import { effectiveMinutes, GRADE_TEXT, songInfo, type ReadingDay, type TrailState } from './state';
 
 export type Activity = Pick<
   HistoryData,
@@ -102,7 +101,7 @@ export function daySummary(s: TrailState, data: Activity, d: Day): string[] {
   for (const [kind, x] of Object.entries(exercises))
     if (x.t) out.push(`${EXERCISE[kind]}: ${x.a} de ${x.t} certos (${pct(x.a, x.t)}%)`);
   for (const [id, m] of Object.entries(s.songs)) {
-    const title = SONGS[id]?.title ?? id;
+    const title = songInfo(s, id)?.title ?? id;
     for (const r of (m.logs ?? []).filter((r) => r.day === d))
       out.push(
         `${title}: ${r.bpm ? r.bpm + ' bpm, ' : ''}${r.clean} de 3 sem erro${r.stuck ? ', travou em ' + r.stuck : ''}`,

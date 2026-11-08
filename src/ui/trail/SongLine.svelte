@@ -1,8 +1,8 @@
 <script lang="ts">
   // Uma música dentro de um bloco do dia: estrutura, materiais, partitura no
   // app e, conforme o bloco, a avaliação da revisão ou o registro de estudo.
-  import { CHORD_CHARTS, DEFAULT_SCORE, SONGS, songLinks } from '../../trail/content';
-  import { GRADE_TEXT, reviewSong, type Grade } from '../../trail/state';
+  import { CHORD_CHARTS, DEFAULT_SCORE, songLinks } from '../../trail/content';
+  import { GRADE_TEXT, reviewSong, songInfo, type Grade } from '../../trail/state';
   import { go, openScoreById } from '../nav.svelte';
   import { saveTrail, trail } from '../trail.svelte';
   import ChordChart from './ChordChart.svelte';
@@ -11,7 +11,7 @@
 
   let { id, review = false }: { id: string; review?: boolean } = $props();
 
-  const M = $derived(SONGS[id]!);
+  const M = $derived(songInfo(trail.s, id)!);
   const st = $derived(trail.s!.songs[id]!);
   const scoreId = $derived(st.scoreId ?? DEFAULT_SCORE[id]);
   const chart = $derived(CHORD_CHARTS[id]);
@@ -26,7 +26,7 @@
 <div class="song">
   <div>
     <b>{M.title}</b> <span class="muted">· {M.artist}</span>
-    <div class="struct">{M.key} · {M.structure}</div>
+    {#if M.key}<div class="struct">{M.key} · {M.structure}</div>{/if}
   </div>
   <Links links={songLinks(id)} />
   <div class="row">
