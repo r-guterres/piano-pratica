@@ -44,3 +44,21 @@ describe('MidiSink', () => {
     ]);
   });
 });
+
+describe('MidiSink stopped and replaced (ear drill: "Próximo" while the last question still sounds)', () => {
+  it('does not silence the next sound: the new sink waits for the old one to be released', () => {
+    const { out, sent } = fakeOutput();
+    const old = new MidiSink(out);
+    const now = performance.now();
+    old.noteOn(now + 140, 60, 80); // already queued by the look-ahead
+    old.stop();
+    const next = new MidiSink(out);
+    const start = Math.max(now + 120, next.readyAt);
+    next.noteOn(start, 64, 80);
+    const resets = sent.filter(([d]) => d[0] === 0xb1 && d[1] === 123);
+    // o "all notes off" sai antes da nota nova, não depois (cortando-a)
+    expect(resets.length).toBe(1);
+    expect(resets[0]![1]!).toBeLessThan(start);
+    expect(next.readyAt).toBeGreaterThan(now + 140);
+  });
+});

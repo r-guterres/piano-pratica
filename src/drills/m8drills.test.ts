@@ -32,6 +32,36 @@ describe('ChordDrill', () => {
     expect(drill.stats).toEqual({ correct: 2, firstTry: 1, skipped: 1, answered: 3 });
   });
 
+  it('flags an incomplete chord when the keys are released (tablet: D7 played as a lone D)', () => {
+    const drill = new ChordDrill(['D7'], seededRng(3));
+    const d = 50; // Ré
+    expect(drill.check([d])).toBeNull(); // ainda montando
+    expect(drill.check([])).toBe('incomplete'); // soltou sem completar
+    expect(drill.lastAttempt).toEqual([d]);
+    // uma nota de fora do acorde, mesmo com poucas teclas, é erro
+    drill.check([d]);
+    drill.check([d, 51]);
+    expect(drill.check([])).toBe('wrong');
+    // soltar depois de um veredito não conta de novo
+    const q = drill.question;
+    const right = inversionVoicing(q.chord, q.inv);
+    expect(drill.check(right)).toBe('correct');
+    expect(drill.check([])).toBeNull();
+    expect(drill.stats.firstTry).toBe(0);
+  });
+
+  it('ignores the keys of the previous chord still held when the next one appears', () => {
+    const drill = new ChordDrill(['C', 'G'], seededRng(4));
+    const q = drill.question;
+    const right = inversionVoicing(q.chord, q.inv);
+    expect(drill.check(right)).toBe('correct');
+    drill.next(right); // o aluno ainda segura o acorde
+    expect(drill.check(right.slice(0, 2))).toBeNull(); // soltando aos poucos
+    expect(drill.check([])).toBeNull(); // não conta como tentativa do novo acorde
+    drill.check([right[0]!]);
+    expect(drill.check([])).not.toBeNull(); // agora sim
+  });
+
   it('ignores symbols it cannot read', () => {
     expect(() => new ChordDrill(['H7'])).toThrow();
     expect(new ChordDrill(['xyz', 'G']).question.symbol).toBe('G');

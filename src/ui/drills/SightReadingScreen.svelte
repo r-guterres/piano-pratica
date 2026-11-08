@@ -206,9 +206,6 @@
     {/if}
     <button onclick={listen} disabled={playing}>Ouvir</button>
     <button onclick={newPassage}>Outro trecho</button>
-    <button onclick={() => (showNames = !showNames)}
-      >{showNames ? 'Esconder nomes' : 'Mostrar nomes'}</button
-    >
     {#if beat !== null}
       <span class="beats">
         {#each [0, 1, 2, 3] as i (i)}<i class:on={beat === i}></i>{/each}
@@ -252,6 +249,9 @@
     <label class="inline">
       <input type="checkbox" bind:checked={extended} onchange={newPassage} disabled={playing} /> Extensão
       ampliada
+    </label>
+    <label class="inline">
+      <input type="checkbox" bind:checked={showNames} /> Nomes das notas
     </label>
   </div>
   {#if warning}<p class="warn">{warning}</p>{/if}

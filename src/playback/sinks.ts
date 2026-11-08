@@ -12,6 +12,8 @@ export interface Sink {
   pedal(at: number, down: boolean): void;
   /** Silencia tudo agora, inclusive o que estava agendado. */
   stop(): void;
+  /** Antes deste instante (performance.now) nada novo deve soar: a saída ainda está sendo silenciada. */
+  readonly readyAt?: number;
 }
 
 // ---------- alto-falante ----------
@@ -164,12 +166,22 @@ const DRUM_CH = 9;
 const WOOD_HI = 76;
 const WOOD_LO = 77;
 
+/**
+ * Por saída: quando termina o silenciamento do último `stop()`. Os sinks são
+ * recriados a cada reprodução, e o "all notes off" de um não pode cair depois
+ * das primeiras notas do seguinte (cortava a 1ª nota da pergunta seguinte do
+ * treino de ouvido).
+ */
+const quietAt = new WeakMap<MIDIOutput, number>();
+
 export class MidiSink implements Sink {
   readonly latencyMs = 0;
   readonly #out: MIDIOutput;
   readonly #onSent: (pitch: number, at: number) => void;
   /** Notas com note-on enviado e note-off ainda não. */
   readonly #pending = new Map<number, number>();
+  /** O maior horário já enviado (o que está na fila do navegador). */
+  #lastAt = 0;
 
   /** `onSent`: avisado de cada note-on (para o filtro de eco da entrada). */
   constructor(out: MIDIOutput, onSent: (pitch: number, at: number) => void = () => {}) {
@@ -178,7 +190,12 @@ export class MidiSink implements Sink {
     this.#send([0xc0 | NOTE_CH, 0]); // piano acústico
   }
 
+  get readyAt(): number {
+    return quietAt.get(this.#out) ?? 0;
+  }
+
   #send(data: number[], at?: number): void {
+    if (at !== undefined && at > this.#lastAt) this.#lastAt = at;
     try {
       this.#out.send(data, at);
     } catch (err) {
@@ -213,8 +230,10 @@ export class MidiSink implements Sink {
     for (const [pitch, at] of this.#pending)
       this.#send([0x80 | NOTE_CH, pitch, 0], Math.max(now, at + 1));
     this.#pending.clear();
-    // e, por garantia, pedal solto e "all notes off" depois do que ainda estava na fila
-    this.#send([0xb0 | NOTE_CH, 64, 0], now + 300);
-    for (const ch of [NOTE_CH, DRUM_CH]) this.#send([0xb0 | ch, 123, 0], now + 300);
+    // e, por garantia, pedal solto e "all notes off" logo depois do que ainda estava na fila
+    const at = Math.max(now, this.#lastAt) + 1;
+    this.#send([0xb0 | NOTE_CH, 64, 0], at);
+    for (const ch of [NOTE_CH, DRUM_CH]) this.#send([0xb0 | ch, 123, 0], at);
+    quietAt.set(this.#out, at + 2);
   }
 }

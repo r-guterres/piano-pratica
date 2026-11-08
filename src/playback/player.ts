@@ -55,7 +55,8 @@ export class Player {
     this.#seq = new Sequencer(schedule, loop);
     const sinks = [this.#out.clicks, this.#out.notes].filter((s): s is Sink => s !== null);
     this.#delay = Math.max(0, ...sinks.map((s) => s.latencyMs));
-    this.#start = performance.now() + LEAD_MS;
+    // uma saída ainda sendo silenciada (som anterior parado agora) atrasa o início
+    this.#start = Math.max(performance.now() + LEAD_MS, ...sinks.map((s) => s.readyAt ?? 0));
     this.#countInMs = schedule.countInMs;
     this.#tick();
     this.#timer = setInterval(() => this.#tick(), TICK_MS);

@@ -38,8 +38,9 @@
     q ? (q.inv ? `${q.chord.display}/${noteLetter(q.chord.tones[q.inv]!)}` : q.chord.display) : '',
   );
   const voicing = $derived(q ? new Set(inversionVoicing(q.chord, q.inv)) : undefined);
-  const heldNames = $derived(
-    [...heldPitches].sort((a, b) => a - b).map((p) => pitchName(p, settings.naming)),
+  // o que foi tocado na última tentativa (continua visível depois de soltar)
+  const attemptNames = $derived(
+    (void tick, drill?.lastAttempt ?? []).map((p) => pitchName(p, settings.naming)),
   );
 
   // confere 220 ms depois da última mudança nas teclas presas (o acorde "assentou")
@@ -62,14 +63,14 @@
 
   function next() {
     if (!drill) return;
-    drill.next();
+    drill.next([...heldPitches]);
     answer = null;
     revealed = false;
     tick++;
   }
 
   function skip() {
-    drill?.skip();
+    drill?.skip([...heldPitches]);
     if (drill) save?.(drill.stats);
     answer = null;
     revealed = false;
@@ -127,8 +128,10 @@
         Certo!
       {:else if answer === 'wrong-bass'}
         As notas estão certas; falta a nota certa no baixo.
+      {:else if answer === 'incomplete'}
+        Faltam notas: você tocou só {attemptNames.join(' · ')}.
       {:else if answer === 'wrong'}
-        Ainda não. Você está tocando: {heldNames.join(' · ') || '—'}
+        Ainda não. Você tocou: {attemptNames.join(' · ') || '—'}
       {/if}
     </div>
     <div class="kb">
