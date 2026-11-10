@@ -5,13 +5,17 @@
 
 import type { ChordDrillOptions } from './chordDrill';
 
-export interface ChordPreset extends Required<ChordDrillOptions> {
+export interface ChordPreset extends Required<Pick<ChordDrillOptions, 'order' | 'inversions'>> {
   /** Id do tópico da Trilha (content.ts). */
   topic: string;
   /** O que fazer, em uma linha. */
   hint: string;
   /** Cifras; com `inversions: 'written'`, "F/C" pede Dó no baixo e sem barra, a fundamental. */
   chords: string[];
+  /** Tom maior em que as cifras estão escritas (o treino pode transpor). */
+  key: string;
+  /** A progressão fica num tom só: dá para mostrar os graus. */
+  degrees: boolean;
 }
 
 const P = (
@@ -20,7 +24,8 @@ const P = (
   inversions: ChordPreset['inversions'],
   chords: string,
   hint: string,
-): ChordPreset => ({ topic, order, inversions, chords: chords.split(' '), hint });
+  { key = 'C', degrees = order === 'sequence' }: { key?: string; degrees?: boolean } = {},
+): ChordPreset => ({ topic, order, inversions, chords: chords.split(' '), hint, key, degrees });
 
 export const CHORD_PRESETS: ChordPreset[] = [
   P(
@@ -57,6 +62,7 @@ export const CHORD_PRESETS: ChordPreset[] = [
     'any',
     'C Dm Em F G Am Bdim G Am Bm C D Em F#dim F Gm Am Bb C Dm Edim',
     'O campo harmônico de C, G e F, grau por grau (I ii iii IV V vi vii°), em qualquer inversão.',
+    { degrees: false },
   ),
   P(
     'h1b',
@@ -64,6 +70,7 @@ export const CHORD_PRESETS: ChordPreset[] = [
     'any',
     'C G Am F G D Em C F C Dm Bb',
     'I–V–vi–IV em C, G e F. Use inversões para mover a mão o mínimo possível.',
+    { degrees: false },
   ),
   P(
     'h1c',
@@ -85,6 +92,7 @@ export const CHORD_PRESETS: ChordPreset[] = [
     'written',
     'F C C7 F Bb F C7 F',
     'O verso de Hey Jude, com a fundamental no baixo (a ME em mínimas).',
+    { key: 'F' },
   ),
   P(
     'h2a',
@@ -106,14 +114,18 @@ export const CHORD_PRESETS: ChordPreset[] = [
     'any',
     'F Eb Bb F A E F#m A7 D Dm A',
     'O ♭VII na coda de Hey Jude (F E♭ B♭ F) e o iv de In My Life (A … D Dm A).',
+    { key: 'F', degrees: false },
   ),
-  P('h2d', 'sequence', 'any', 'F Em7 A7 Dm Bb C7 F', 'Yesterday: o A7 é o V do vi (Dm).'),
+  P('h2d', 'sequence', 'any', 'F Em7 A7 Dm Bb C7 F', 'Yesterday: o A7 é o V do vi (Dm).', {
+    key: 'F',
+  }),
   P(
     'h2f',
     'sequence',
     'any',
     'G D Em C G D C G F C Dm Bb F C Bb F',
     'O verso de Let It Be em G e depois em F, pensando em graus (I V vi IV | I V IV I).',
+    { key: 'G', degrees: false },
   ),
 ];
 

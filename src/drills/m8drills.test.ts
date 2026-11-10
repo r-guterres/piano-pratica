@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ChordDrill } from './chordDrill';
 import { CHORD_PRESETS, chordPreset } from './chordPresets';
+import { KEYS, transposeSymbol } from './transpose';
 import { PHASES } from '../trail/content';
 import {
   answerFromKeys,
@@ -99,12 +100,46 @@ describe('ChordDrill', () => {
     expect(drill.trouble).toEqual({ 'C/E': 1, G: 1 });
   });
 
-  it('reads every chord of every exercise, and each exercise belongs to a harmony topic', () => {
+  it('reads every chord of every exercise in every key, and each exercise belongs to a harmony topic', () => {
     const topics = PHASES.flatMap((f) => f.harmony.map((t) => t.id));
     for (const p of CHORD_PRESETS) {
       expect(topics).toContain(p.topic);
-      expect(new ChordDrill(p.chords, seededRng(1), p).labels).toHaveLength(p.chords.length);
+      for (const to of KEYS)
+        expect(new ChordDrill(p.chords, seededRng(1), { ...p, to }).labels).toHaveLength(
+          p.chords.length,
+        );
     }
+  });
+
+  it('asks the progression in the chosen key (I–IV–V–I in A♭)', () => {
+    const p = chordPreset('h0c')!;
+    const drill = new ChordDrill(p.chords, seededRng(5), { ...p, to: 'Ab' });
+    expect(drill.key).toBe('Ab');
+    expect(drill.labels).toEqual(['A♭', 'D♭/A♭', 'E♭/G', 'A♭']);
+    const q = drill.question;
+    expect(q.chord.name).toBe('Lá♭ maior');
+    // A♭ = 56, C = 60, E♭ = 63
+    expect(drill.check([56, 60, 63])).toBe('correct');
+    drill.next();
+    expect(drill.check([56, 61, 65])).toBe('correct'); // D♭/A♭: Lá♭ no baixo
+    drill.next();
+    expect(drill.check([63, 67, 70])).toBe('wrong-bass'); // E♭ em fundamental, não E♭/G
+  });
+
+  it('draws a new key each time the progression starts over', () => {
+    const p = chordPreset('h0c')!;
+    const drill = new ChordDrill(p.chords, seededRng(9), { ...p, to: 'random' });
+    const keys: string[] = [];
+    for (let k = 0; k < 12; k++) {
+      if (drill.question.index === 0) keys.push(drill.key);
+      else expect(drill.key).toBe(keys.at(-1)); // o tom fica durante a volta
+      drill.skip();
+    }
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys.map((k, i) => k === keys[i - 1])).has(true)).toBe(false);
+    expect(drill.question.label).toBe(
+      transposeSymbol('C', 'C', drill.key).replace('b', '♭').replace('#', '♯'),
+    );
   });
 
   it('ignores symbols it cannot read', () => {

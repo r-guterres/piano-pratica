@@ -2,15 +2,19 @@
   // Treino de acordes: o app pede um acorde e confere pelo teclado as notas
   // presas e a nota do baixo. Exercícios: os acordes da fase (sorteados, em
   // inversão sorteada) ou o do tópico de harmonia (uma progressão em ordem).
+  // O tom pode ser trocado (ou sorteado a cada volta) e, nas progressões,
+  // o app mostra os graus ou pede o acorde pelo grau.
   // Sessão: escolher → ▶ Começar → ■ Encerrar → resumo.
   import { onDestroy } from 'svelte';
   import { pitchName } from '../../core/pitch';
   import { ChordDrill, type ChordAnswer } from '../../drills/chordDrill';
   import { CHORD_PRESETS } from '../../drills/chordPresets';
+  import { KEYS, keyLabel, keyTonic } from '../../drills/transpose';
   import { heldPitches } from '../../input/held.svelte';
   import { inputHub } from '../../input/hub';
   import { INVERSION_NAMES, inversionVoicing, noteSolfege } from '../../practice/chords';
   import { CHORDS_BY_PHASE, PHASES, type Topic } from '../../trail/content';
+  import { degreeOf } from '../../trail/harmony';
   import PianoKeyboard from '../PianoKeyboard.svelte';
   import { settings } from '../settings.svelte';
   import { loadTrail, trail } from '../trail.svelte';
@@ -42,6 +46,12 @@
     CHORD_PRESETS.find((p) => p.topic === session.goal?.topic)?.topic ?? null,
   );
   const choice = $derived(CHORD_PRESETS.find((p) => p.topic === choiceTopic) ?? null);
+  /** Tom pedido: o escrito, um dos 12 ou sorteado a cada volta. */
+  let keyChoice = $state<string>('written');
+  /** Pedir o acorde pelo grau (a cifra só aparece depois do acerto). */
+  let byDegree = $state(false);
+  const writtenKey = $derived(choice?.key ?? 'C');
+  const canDegrees = $derived(choice?.degrees ?? false);
 
   let drill = $state.raw<ChordDrill | null>(null);
   let tick = $state(0);
@@ -49,10 +59,18 @@
   let revealed = $state(false);
   let warning = $state('');
   let save: ReturnType<typeof exerciseSaver> | null = null;
+  /** Os graus valem para a sessão em andamento (fixados ao começar). */
+  let degreeMode = $state(false);
+  let showDegrees = $state(false);
 
   function start() {
     const symbols = choice?.chords ?? CHORDS_BY_PHASE[Math.min(phase, CHORDS_BY_PHASE.length - 1)]!;
-    drill = new ChordDrill(symbols, Math.random, choice ?? {});
+    drill = new ChordDrill(symbols, Math.random, {
+      ...(choice ?? {}),
+      to: keyChoice === 'written' ? undefined : keyChoice,
+    });
+    degreeMode = canDegrees && byDegree;
+    showDegrees = canDegrees;
     save = exerciseSaver('chords', choice?.topic ?? `fase ${phase}`);
     answer = null;
     revealed = false;
@@ -74,6 +92,10 @@
   }
 
   const q = $derived((void tick, drill?.question ?? null));
+  const key = $derived((void tick, drill?.key ?? 'C'));
+  const degree = (sym: string) => degreeOf(sym, { tonic: keyTonic(key), minor: false });
+  // no modo pelos graus, a cifra aparece depois do acerto ou da resposta
+  const hideSymbol = $derived(degreeMode && !revealed && answer !== 'correct');
   // cópia: o objeto do treino é o mesmo, e o $derived só nota um valor novo
   const stats = $derived((void tick, drill ? { ...drill.stats } : null));
   const voicing = $derived(q ? new Set(inversionVoicing(q.chord, q.inv ?? 0)) : undefined);
@@ -179,6 +201,22 @@
     </div>
     {#if choice}<p class="muted small">{choice.hint}</p>{/if}
     <div class="row">
+      <label>
+        Tom
+        <select bind:value={keyChoice}>
+          <option value="written">como escrito ({keyLabel(writtenKey)} maior)</option>
+          {#each KEYS as k (k)}<option value={k}>{keyLabel(k)} maior</option>{/each}
+          <option value="random">sortear (muda a cada volta)</option>
+        </select>
+      </label>
+      {#if canDegrees}
+        <label class="check">
+          <input type="checkbox" bind:checked={byDegree} />
+          Pedir pelos graus
+        </label>
+      {/if}
+    </div>
+    <div class="row">
       <button class="primary" onclick={start}>▶ Começar</button>
       {#if session.goal}
         <span class="muted small">Meta do bloco: {session.goal.minutes} min</span>
@@ -211,20 +249,37 @@
           : ''}
       </span>
     </SessionBar>
+    <p class="key">
+      <span class="pill accent">{keyLabel(key)} maior</span>
+      {#if keyChoice === 'random'}<span class="muted small">o tom muda a cada volta</span>{/if}
+    </p>
     {#if drill.order === 'sequence'}
       <div class="progression" aria-label="Progressão">
         {#each drill.labels as label, i (i)}
-          <span class="pill" class:accent={i === q.index}>{label}</span>
+          <span class="pill" class:accent={i === q.index}>
+            {#if degreeMode}{degree(label)}{:else}{label}{#if showDegrees}<small>
+                  {degree(label)}</small
+                >{/if}{/if}
+          </span>
         {/each}
       </div>
     {/if}
-    <div class="big">{q.label}</div>
-    <p>
-      <b>{q.chord.name}</b> · {q.inv === null
-        ? 'qualquer inversão'
-        : INVERSION_NAMES[q.inv] +
-          (q.inv ? ` (${noteSolfege(q.chord.tones[q.inv]!)} no baixo)` : '')}
-    </p>
+    {#if hideSymbol}
+      <div class="big">{degree(q.chord.display)}</div>
+      <p>
+        {q.inv === null ? 'qualquer inversão' : INVERSION_NAMES[q.inv]} · em {keyLabel(key)} maior
+      </p>
+    {:else}
+      <div class="big">
+        {q.label}{#if degreeMode || showDegrees}<span class="deg">{degree(q.label)}</span>{/if}
+      </div>
+      <p>
+        <b>{q.chord.name}</b> · {q.inv === null
+          ? 'qualquer inversão'
+          : INVERSION_NAMES[q.inv] +
+            (q.inv ? ` (${noteSolfege(q.chord.tones[q.inv]!)} no baixo)` : '')}
+      </p>
+    {/if}
     <div class="feedback" class:ok={answer === 'correct'} class:no={answer && answer !== 'correct'}>
       {#if answer === 'correct'}
         Certo!
@@ -293,6 +348,27 @@
   .big {
     font-size: 2.6rem;
     font-weight: 700;
+  }
+  .deg {
+    margin-left: 0.6rem;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .progression small {
+    margin-left: 0.3rem;
+    color: var(--muted);
+  }
+  .key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
   }
   .feedback {
     min-height: 1.5em;

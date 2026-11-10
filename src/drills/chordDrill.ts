@@ -5,8 +5,15 @@
 // na cifra, "F/C", ou em qualquer inversão). Puro.
 
 import type { MidiPitch } from '../core/events';
-import { checkInversion, noteLetter, spellChord, type SpelledChord } from '../practice/chords';
+import {
+  checkInversion,
+  noteLetter,
+  parseChord,
+  spellChord,
+  type SpelledChord,
+} from '../practice/chords';
 import type { Rng } from './priority';
+import { KEYS, transposeChords } from './transpose';
 
 export interface ChordQuestion {
   /** Cifra sem o baixo ("F"). */
@@ -28,6 +35,14 @@ export interface ChordDrillOptions {
    * barra = fundamental); any: qualquer inversão.
    */
   inversions?: 'random' | 'written' | 'any';
+  /** Tom maior em que as cifras estão escritas (padrão: Dó). */
+  key?: string;
+  /**
+   * Tom em que o treino pede os acordes (um de `KEYS`), ou 'random': um tom
+   * sorteado no começo e outro a cada volta (fim da progressão, ou tantos
+   * acordes quanto a lista no sorteio). Padrão: o tom escrito.
+   */
+  to?: string;
 }
 
 interface Item {
@@ -43,7 +58,10 @@ function parseItem(text: string): Item | null {
   const [symbol, bass] = text.trim().split('/');
   const chord = spellChord(symbol!);
   if (!chord) return null;
-  const written = bass ? chord.tones.findIndex((n) => noteLetter(n) === flat(bass)) : 0;
+  // pela grafia; se a transposição soletrou o baixo de outro jeito (enarmônico), pela altura
+  const bassPc = bass ? parseChord(bass)?.root : undefined;
+  let written = bass ? chord.tones.findIndex((n) => noteLetter(n) === flat(bass)) : 0;
+  if (written < 0) written = chord.tones.findIndex((n) => n.pc === bassPc);
   return written < 0 ? null : { symbol: symbol!, chord, written };
 }
 
@@ -72,7 +90,13 @@ export interface ChordDrillStats {
 }
 
 export class ChordDrill {
-  readonly #items: readonly Item[];
+  readonly #symbols: readonly string[];
+  readonly #from: string;
+  readonly #randomKey: boolean;
+  #key: string;
+  #items: readonly Item[] = [];
+  /** Perguntas desde a última troca de tom (no sorteio). */
+  #count = 0;
   readonly #order: 'random' | 'sequence';
   readonly #inversions: 'random' | 'written' | 'any';
   readonly #rng: Rng;
@@ -90,12 +114,34 @@ export class ChordDrill {
   readonly trouble: Record<string, number> = {};
 
   constructor(symbols: readonly string[], rng: Rng = Math.random, opts: ChordDrillOptions = {}) {
-    this.#items = symbols.map(parseItem).filter((x): x is Item => x !== null);
-    if (!this.#items.length) throw new Error('Nenhum acorde reconhecido');
+    this.#symbols = symbols;
+    this.#from = opts.key ?? 'C';
+    this.#randomKey = opts.to === 'random';
     this.#order = opts.order ?? 'random';
     this.#inversions = opts.inversions ?? 'random';
     this.#rng = rng;
+    this.#key = this.#from;
+    this.#setKey(this.#randomKey ? this.#otherKey() : (opts.to ?? this.#from));
+    if (!this.#items.length) throw new Error('Nenhum acorde reconhecido');
     this.#q = this.#draw(null);
+  }
+
+  /** O tom em que os acordes estão sendo pedidos. */
+  get key(): string {
+    return this.#key;
+  }
+
+  #setKey(key: string): void {
+    this.#key = key;
+    this.#items = transposeChords(this.#symbols, this.#from, key)
+      .map(parseItem)
+      .filter((x): x is Item => x !== null);
+  }
+
+  /** Um tom sorteado, diferente do atual. */
+  #otherKey(): string {
+    const others = KEYS.filter((k) => k !== this.#key);
+    return others[Math.floor(this.#rng() * others.length)]!;
   }
 
   /** As cifras da lista, na ordem (para mostrar a progressão). */
@@ -121,6 +167,10 @@ export class ChordDrill {
   #draw(previous: ChordQuestion | null): ChordQuestion {
     const n = this.#items.length;
     let index: number;
+    // uma volta completa: troca de tom (no sorteio)
+    const lap =
+      this.#order === 'sequence' ? previous?.index === n - 1 : previous && ++this.#count % n === 0;
+    if (lap && this.#randomKey) this.#setKey(this.#otherKey());
     if (this.#order === 'sequence') index = previous ? (previous.index + 1) % n : 0;
     else
       do index = Math.floor(this.#rng() * n);
